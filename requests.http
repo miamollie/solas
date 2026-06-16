@@ -1,0 +1,113 @@
+### greenopsd local testing
+### Use with VS Code REST Client extension or similar HTTP client
+
+@host = http://127.0.0.1:8000
+@client = continue
+@model = qwen3:32b
+
+### Health endpoint
+GET {{host}}/health
+
+###
+# Readiness endpoint (checks Ollama connectivity)
+GET {{host}}/ready
+
+###
+# List available models from Ollama
+GET {{host}}/v1/models
+
+###
+# Chat completion request (non-streaming)
+# Requires Ollama running on localhost:11434
+POST {{host}}/v1/chat/completions
+Content-Type: application/json
+X-GreenOps-Client: {{client}}
+User-Agent: Continue/1.0
+
+{
+  "model": "{{model}}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello, what is your name?"
+    }
+  ]
+}
+
+###
+# Chat completion with multiple messages
+POST {{host}}/v1/chat/completions
+Content-Type: application/json
+X-GreenOps-Client: {{client}}
+
+{
+  "model": "{{model}}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is 2+2?"
+    },
+    {
+      "role": "assistant",
+      "content": "2+2 equals 4"
+    },
+    {
+      "role": "user",
+      "content": "And what is 3+3?"
+    }
+  ]
+}
+
+###
+# Prometheus metrics endpoint
+GET {{host}}/metrics
+
+###
+# Test streaming rejection (should return 400)
+POST {{host}}/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "{{model}}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "test"
+    }
+  ],
+  "stream": true
+}
+
+###
+# Test with different client attribution
+POST {{host}}/v1/chat/completions
+Content-Type: application/json
+X-GreenOps-Client: cline
+User-Agent: Cline/0.1.0
+
+{
+  "model": "llama3.1:8b",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello from Cline"
+    }
+  ]
+}
+
+###
+# Test with open-webui client
+POST {{host}}/v1/chat/completions
+Content-Type: application/json
+X-GreenOps-Client: open-webui
+User-Agent: Mozilla/5.0 (OpenWebUI)
+
+{
+  "model": "{{model}}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Request from Open WebUI"
+    }
+  ]
+}
