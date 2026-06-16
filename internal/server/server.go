@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/miamollie/greenops-local-llm/internal/httpx"
+	"github.com/miamollie/greenops-local-llm/internal/metrics"
 	"github.com/miamollie/greenops-local-llm/internal/ollama"
 	"github.com/miamollie/greenops-local-llm/internal/openai"
 )
@@ -19,6 +20,7 @@ type Server struct {
 	handler http.Handler
 	logger  *slog.Logger
 	ready   readinessChecker
+	metrics *metrics.Metrics
 }
 
 type readinessChecker interface {
@@ -28,14 +30,18 @@ type readinessChecker interface {
 }
 
 // New creates a server with baseline routes.
-func New(logger *slog.Logger, ready readinessChecker) *Server {
+func New(logger *slog.Logger, ready readinessChecker, met *metrics.Metrics) *Server {
 	mux := http.NewServeMux()
-	s := &Server{logger: logger, ready: ready}
+	if met == nil {
+		met = metrics.New()
+	}
+	s := &Server{logger: logger, ready: ready, metrics: met}
 
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /ready", s.handleReady)
 	mux.HandleFunc("GET /v1/models", s.handleModels)
 	mux.HandleFunc("POST /v1/chat/completions", s.handleChatCompletions)
+	mux.Handle("GET /metrics", s.metrics.Handler())
 
 	h := httpx.RequestIDMiddleware(httpx.LoggingMiddleware(logger, mux))
 	s.handler = h

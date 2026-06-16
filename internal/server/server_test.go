@@ -9,8 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/miamollie/greenops-local-llm/internal/metrics"
 	"github.com/miamollie/greenops-local-llm/internal/ollama"
 )
 
@@ -59,7 +61,7 @@ func (f fakeReadyChecker) Chat(_ context.Context, reqBody ollama.ChatRequest) (o
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{})
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{}, metrics.New())
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rr := httptest.NewRecorder()
 
@@ -79,7 +81,7 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestReadyEndpointHealthy(t *testing.T) {
-	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{})
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{}, metrics.New())
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	rr := httptest.NewRecorder()
 
@@ -91,7 +93,7 @@ func TestReadyEndpointHealthy(t *testing.T) {
 }
 
 func TestReadyEndpointUnavailable(t *testing.T) {
-	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{err: errors.New("down")})
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{err: errors.New("down")}, metrics.New())
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	rr := httptest.NewRecorder()
 
@@ -103,7 +105,7 @@ func TestReadyEndpointUnavailable(t *testing.T) {
 }
 
 func TestModelsEndpoint(t *testing.T) {
-	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{models: []ollama.TagModel{{Name: "qwen3:32b"}}})
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{models: []ollama.TagModel{{Name: "qwen3:32b"}}}, metrics.New())
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	rr := httptest.NewRecorder()
 
@@ -133,7 +135,7 @@ func TestChatCompletionsEndpoint(t *testing.T) {
 		Message:         ollama.ChatMessage{Role: "assistant", Content: "hi there"},
 		PromptEvalCount: 4,
 		EvalCount:       6,
-	}})
+	}}, metrics.New())
 	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
@@ -160,7 +162,7 @@ func TestChatCompletionsEndpoint(t *testing.T) {
 }
 
 func TestChatCompletionsStreamingRejected(t *testing.T) {
-	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{})
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{}, metrics.New())
 	body := []byte(`{"model":"qwen3:32b","messages":[],"stream":true}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
@@ -174,7 +176,7 @@ func TestChatCompletionsStreamingRejected(t *testing.T) {
 
 func TestChatCompletionsModelPassthrough(t *testing.T) {
 	checker := &captureModelChecker{}
-	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), checker)
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), checker, metrics.New())
 	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
@@ -186,5 +188,20 @@ func TestChatCompletionsModelPassthrough(t *testing.T) {
 	}
 	if checker.receivedModel != "qwen3:32b" {
 		t.Fatalf("expected passthrough model qwen3:32b, got %q", checker.receivedModel)
+	}
+}
+
+func TestMetricsEndpoint(t *testing.T) {
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{}, metrics.New())
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "go_gc_duration_seconds") {
+		t.Fatalf("expected prometheus output")
 	}
 }
