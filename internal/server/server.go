@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -70,9 +71,11 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	defer s.metrics.ObserveDuration("all", time.Since(start))
+	client, userAgent, remoteIP := requestAttribution(r)
 
 	if s.ready == nil {
 		s.metrics.IncRequests("all", http.StatusBadGateway)
+		s.metrics.IncClientRequest("all", http.StatusBadGateway, client, userAgent, remoteIP)
 		http.Error(w, "ollama client unavailable", http.StatusBadGateway)
 		return
 	}
@@ -84,6 +87,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusRequestTimeout
 		}
 		s.metrics.IncRequests("all", status)
+		s.metrics.IncClientRequest("all", status, client, userAgent, remoteIP)
 		http.Error(w, "upstream error", status)
 		return
 	}
@@ -93,6 +97,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		resp.Data = append(resp.Data, openai.ModelInfo{ID: m.Name, Object: "model", OwnedBy: "ollama"})
 	}
 	s.metrics.IncRequests("all", http.StatusOK)
+	s.metrics.IncClientRequest("all", http.StatusOK, client, userAgent, remoteIP)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
@@ -100,12 +105,14 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	modelLabel := "unknown"
+	client, userAgent, remoteIP := requestAttribution(r)
 	defer func() {
 		s.metrics.ObserveDuration(modelLabel, time.Since(start))
 	}()
 
 	if s.ready == nil {
 		s.metrics.IncRequests("unknown", http.StatusBadGateway)
+		s.metrics.IncClientRequest("unknown", http.StatusBadGateway, client, userAgent, remoteIP)
 		http.Error(w, "ollama client unavailable", http.StatusBadGateway)
 		return
 	}
@@ -113,16 +120,19 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	var req openai.ChatCompletionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.metrics.IncRequests("unknown", http.StatusBadRequest)
+		s.metrics.IncClientRequest("unknown", http.StatusBadRequest, client, userAgent, remoteIP)
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
 	if req.Stream {
 		s.metrics.IncRequests(req.Model, http.StatusBadRequest)
+		s.metrics.IncClientRequest(req.Model, http.StatusBadRequest, client, userAgent, remoteIP)
 		http.Error(w, "streaming not supported", http.StatusBadRequest)
 		return
 	}
 	if req.Model == "" {
 		s.metrics.IncRequests("unknown", http.StatusBadRequest)
+		s.metrics.IncClientRequest("unknown", http.StatusBadRequest, client, userAgent, remoteIP)
 		http.Error(w, "model is required", http.StatusBadRequest)
 		return
 	}
@@ -140,6 +150,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("chat completion failed", "error", err)
 		s.metrics.IncRequests(req.Model, http.StatusBadGateway)
+		s.metrics.IncClientRequest(req.Model, http.StatusBadGateway, client, userAgent, remoteIP)
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
@@ -163,6 +174,27 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	s.metrics.AddTokenUsage(req.Model, out.PromptEvalCount, out.EvalCount)
 	s.metrics.IncRequests(req.Model, http.StatusOK)
+	s.metrics.IncClientRequest(req.Model, http.StatusOK, client, userAgent, remoteIP)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func requestAttribution(r *http.Request) (client string, userAgent string, remoteIP string) {
+	client = r.Header.Get("X-GreenOps-Client")
+	userAgent = r.UserAgent()
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	remoteIP = host
+	if remoteIP == "" {
+		remoteIP = "unknown"
+	}
+	if userAgent == "" {
+		userAgent = "unknown"
+	}
+	if client == "" {
+		client = "unknown"
+	}
+	return client, userAgent, remoteIP
 }

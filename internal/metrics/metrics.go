@@ -15,6 +15,7 @@ type Metrics struct {
 	Registry *prometheus.Registry
 	handler  http.Handler
 	requests *prometheus.CounterVec
+	clients  *prometheus.CounterVec
 	duration *prometheus.HistogramVec
 	prompt   *prometheus.CounterVec
 	output   *prometheus.CounterVec
@@ -30,6 +31,13 @@ func New() *Metrics {
 			Help: "Total number of OpenAI-compatible requests handled by greenopsd.",
 		},
 		[]string{"model", "status"},
+	)
+	clients := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "greenops_client_requests_total",
+			Help: "Total number of requests by attributed client metadata.",
+		},
+		[]string{"model", "status", "client", "user_agent", "remote_ip"},
 	)
 	duration := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -53,11 +61,12 @@ func New() *Metrics {
 		},
 		[]string{"model"},
 	)
-	reg.MustRegister(requests, duration, prompt, output)
+	reg.MustRegister(requests, clients, duration, prompt, output)
 	return &Metrics{
 		Registry: reg,
 		handler:  promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
 		requests: requests,
+		clients:  clients,
 		duration: duration,
 		prompt:   prompt,
 		output:   output,
@@ -75,6 +84,23 @@ func (m *Metrics) IncRequests(model string, status int) {
 		model = "unknown"
 	}
 	m.requests.WithLabelValues(model, strconv.Itoa(status)).Inc()
+}
+
+// IncClientRequest increments attributed request counters.
+func (m *Metrics) IncClientRequest(model string, status int, client, userAgent, remoteIP string) {
+	if model == "" {
+		model = "unknown"
+	}
+	if client == "" {
+		client = "unknown"
+	}
+	if userAgent == "" {
+		userAgent = "unknown"
+	}
+	if remoteIP == "" {
+		remoteIP = "unknown"
+	}
+	m.clients.WithLabelValues(model, strconv.Itoa(status), client, userAgent, remoteIP).Inc()
 }
 
 // ObserveDuration records request duration by model label.

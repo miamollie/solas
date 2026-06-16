@@ -214,6 +214,9 @@ func TestRequestMetricIncremented(t *testing.T) {
 	}}, m)
 	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	req.Header.Set("User-Agent", "Continue/1.0")
+	req.Header.Set("X-GreenOps-Client", "continue")
+	req.RemoteAddr = "10.0.0.8:4312"
 	rr := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rr, req)
 
@@ -232,5 +235,8 @@ func TestRequestMetricIncremented(t *testing.T) {
 	}
 	if !strings.Contains(metricsRR.Body.String(), `greenops_completion_tokens_total{model="qwen3:32b"} 6`) {
 		t.Fatalf("expected completion token metric in metrics output, got: %s", metricsRR.Body.String())
+	}
+	if !strings.Contains(metricsRR.Body.String(), `greenops_client_requests_total{client="continue",model="qwen3:32b",remote_ip="10.0.0.8",status="200",user_agent="Continue/1.0"} 1`) {
+		t.Fatalf("expected client attribution metric in metrics output, got: %s", metricsRR.Body.String())
 	}
 }
