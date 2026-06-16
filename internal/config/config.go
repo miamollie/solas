@@ -10,7 +10,7 @@ import (
 
 const (
 	defaultListenAddress = ":8000"
-	defaultOllamaBaseURL = "http://localhost:11434"
+	defaultOllamaBaseURL = "http://127.0.0.1:11434"
 	defaultRequestTimeout = 60 * time.Second
 	defaultOllamaTimeout  = 60 * time.Second
 	defaultStartupTimeout = 10 * time.Second

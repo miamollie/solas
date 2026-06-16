@@ -1,16 +1,10 @@
 # greenopsd
 
-`greenopsd` is a lightweight Go service that provides an OpenAI-compatible facade in front of Ollama and exports Prometheus metrics.
+`greenopsd` is a lightweight Go service that provides an OpenAI-compatible facade in front of Ollama and exports Prometheus metrics. The goals is to have a proxy layer enabling easier GreenOps metrics gathering and visualisation.
 
-## MVP Scope
+## How it works
 
-This repository tracks MVP milestones for:
 
-- OpenAI-compatible endpoints (`/v1/models`, `/v1/chat/completions`)
-- Health and readiness probes
-- Prometheus metrics
-- Client attribution labels
-- Docker deployment
 
 ## Logging
 

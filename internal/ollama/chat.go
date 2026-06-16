@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -26,6 +27,7 @@ type ChatResponse struct {
 	Model           string      `json:"model"`
 	Message         ChatMessage `json:"message"`
 	Done            bool        `json:"done"`
+	DoneReason      string      `json:"done_reason,omitempty"`
 	PromptEvalCount int         `json:"prompt_eval_count"`
 	EvalCount       int         `json:"eval_count"`
 }
@@ -55,4 +57,27 @@ func (c *Client) Chat(ctx context.Context, reqBody ChatRequest) (ChatResponse, e
 		return ChatResponse{}, err
 	}
 	return out, nil
+}
+
+// ChatStream opens a streaming chat request to Ollama and returns the response body.
+func (c *Client) ChatStream(ctx context.Context, reqBody ChatRequest) (io.ReadCloser, error) {
+	u := c.baseURL.JoinPath("/api/chat")
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
+	}
+	return resp.Body, nil
 }

@@ -8,7 +8,7 @@
 listen_address: ":8000"
 
 ollama:
-  base_url: "http://localhost:11434"
+  base_url: "http://127.0.0.1:11434"
 ```
 
 ## Environment Variables

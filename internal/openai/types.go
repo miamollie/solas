@@ -42,6 +42,28 @@ type ChatCompletionChoice struct {
 	FinishReason string      `json:"finish_reason"`
 }
 
+// ChatCompletionChunkResponse is an OpenAI-compatible streaming chunk payload.
+type ChatCompletionChunkResponse struct {
+	ID      string                      `json:"id"`
+	Object  string                      `json:"object"`
+	Created int64                       `json:"created"`
+	Model   string                      `json:"model"`
+	Choices []ChatCompletionChunkChoice `json:"choices"`
+}
+
+// ChatCompletionChunkChoice is a single OpenAI-compatible stream delta choice.
+type ChatCompletionChunkChoice struct {
+	Index        int               `json:"index"`
+	Delta        ChatMessageDelta  `json:"delta"`
+	FinishReason *string           `json:"finish_reason"`
+}
+
+// ChatMessageDelta contains incremental streamed token content.
+type ChatMessageDelta struct {
+	Role    string `json:"role,omitempty"`
+	Content string `json:"content,omitempty"`
+}
+
 // Usage represents token usage counters.
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`

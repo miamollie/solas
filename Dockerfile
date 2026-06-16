@@ -1,12 +1,15 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.24 AS build
+FROM golang:1.26 AS build
 WORKDIR /src
 
+# Cache dependencies between builds
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
+# Compile binary for Linux AMD64 with CGO disabled to ensure a statically linked executable
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/greenopsd ./cmd/greenopsd
 
 FROM busybox:1.36.1-musl AS busybox

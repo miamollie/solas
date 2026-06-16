@@ -21,6 +21,7 @@ type fakeReadyChecker struct {
 	err    error
 	models []ollama.TagModel
 	chat   ollama.ChatResponse
+	stream []ollama.ChatResponse
 }
 
 type captureModelChecker struct {
@@ -38,6 +39,11 @@ func (c *captureModelChecker) ListModels(_ context.Context) ([]ollama.TagModel, 
 func (c *captureModelChecker) Chat(_ context.Context, reqBody ollama.ChatRequest) (ollama.ChatResponse, error) {
 	c.receivedModel = reqBody.Model
 	return ollama.ChatResponse{Model: reqBody.Model, Message: ollama.ChatMessage{Role: "assistant", Content: "ok"}}, nil
+}
+
+func (c *captureModelChecker) ChatStream(_ context.Context, reqBody ollama.ChatRequest) (io.ReadCloser, error) {
+	c.receivedModel = reqBody.Model
+	return io.NopCloser(strings.NewReader("")), nil
 }
 
 func (f fakeReadyChecker) IsReachable(_ context.Context) error {
@@ -59,6 +65,24 @@ func (f fakeReadyChecker) Chat(_ context.Context, reqBody ollama.ChatRequest) (o
 		return ollama.ChatResponse{}, errors.New("expected non-streaming")
 	}
 	return f.chat, nil
+}
+
+func (f fakeReadyChecker) ChatStream(_ context.Context, reqBody ollama.ChatRequest) (io.ReadCloser, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if !reqBody.Stream {
+		return nil, errors.New("expected streaming")
+	}
+	lines := make([]string, 0, len(f.stream))
+	for _, c := range f.stream {
+		raw, err := json.Marshal(c)
+		if err != nil {
+			return nil, err
+		}
+		lines = append(lines, string(raw))
+	}
+	return io.NopCloser(strings.NewReader(strings.Join(lines, "\n"))), nil
 }
 
 func TestHealthEndpoint(t *testing.T) {
@@ -162,16 +186,35 @@ func TestChatCompletionsEndpoint(t *testing.T) {
 	}
 }
 
-func TestChatCompletionsStreamingRejected(t *testing.T) {
-	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{}, metrics.New())
+func TestChatCompletionsStreamingSSE(t *testing.T) {
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{stream: []ollama.ChatResponse{
+		{Model: "qwen3:32b", Message: ollama.ChatMessage{Role: "assistant", Content: "hel"}, Done: false},
+		{Model: "qwen3:32b", Message: ollama.ChatMessage{Role: "assistant", Content: "lo"}, Done: true, PromptEvalCount: 3, EvalCount: 5},
+	}}, metrics.New())
 	body := []byte(`{"model":"qwen3:32b","messages":[],"stream":true}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
 
 	s.Handler().ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	if got := rr.Header().Get("Content-Type"); !strings.Contains(got, "text/event-stream") {
+		t.Fatalf("expected text/event-stream content type, got %q", got)
+	}
+	bodyText := rr.Body.String()
+	if !strings.Contains(bodyText, `"object":"chat.completion.chunk"`) {
+		t.Fatalf("expected chat completion chunks in SSE output, got %s", bodyText)
+	}
+	if !strings.Contains(bodyText, `"content":"hel"`) || !strings.Contains(bodyText, `"content":"lo"`) {
+		t.Fatalf("expected streamed content chunks in SSE output, got %s", bodyText)
+	}
+	if !strings.Contains(bodyText, `"finish_reason":"stop"`) {
+		t.Fatalf("expected terminal finish reason in SSE output, got %s", bodyText)
+	}
+	if !strings.Contains(bodyText, "data: [DONE]") {
+		t.Fatalf("expected [DONE] in SSE output, got %s", bodyText)
 	}
 }
 
