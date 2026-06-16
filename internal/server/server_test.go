@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -203,5 +204,24 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "go_gc_duration_seconds") {
 		t.Fatalf("expected prometheus output")
+	}
+}
+
+func TestRequestMetricIncremented(t *testing.T) {
+	m := metrics.New()
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{chat: ollama.ChatResponse{
+		Model: "qwen3:32b", Message: ollama.ChatMessage{Role: "assistant", Content: "ok"},
+	}}, m)
+	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsRR := httptest.NewRecorder()
+	s.Handler().ServeHTTP(metricsRR, metricsReq)
+
+	if !strings.Contains(metricsRR.Body.String(), `greenops_requests_total{model="qwen3:32b",status="`+strconv.Itoa(http.StatusOK)+`"} 1`) {
+		t.Fatalf("expected request counter in metrics output, got: %s", metricsRR.Body.String())
 	}
 }

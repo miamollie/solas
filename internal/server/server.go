@@ -69,6 +69,7 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	if s.ready == nil {
+		s.metrics.IncRequests("all", http.StatusBadGateway)
 		http.Error(w, "ollama client unavailable", http.StatusBadGateway)
 		return
 	}
@@ -79,6 +80,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, context.Canceled) {
 			status = http.StatusRequestTimeout
 		}
+		s.metrics.IncRequests("all", status)
 		http.Error(w, "upstream error", status)
 		return
 	}
@@ -87,26 +89,31 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	for _, m := range models {
 		resp.Data = append(resp.Data, openai.ModelInfo{ID: m.Name, Object: "model", OwnedBy: "ollama"})
 	}
+	s.metrics.IncRequests("all", http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if s.ready == nil {
+		s.metrics.IncRequests("unknown", http.StatusBadGateway)
 		http.Error(w, "ollama client unavailable", http.StatusBadGateway)
 		return
 	}
 
 	var req openai.ChatCompletionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.metrics.IncRequests("unknown", http.StatusBadRequest)
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
 	if req.Stream {
+		s.metrics.IncRequests(req.Model, http.StatusBadRequest)
 		http.Error(w, "streaming not supported", http.StatusBadRequest)
 		return
 	}
 	if req.Model == "" {
+		s.metrics.IncRequests("unknown", http.StatusBadRequest)
 		http.Error(w, "model is required", http.StatusBadRequest)
 		return
 	}
@@ -122,6 +129,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	out, err := s.ready.Chat(r.Context(), ollamaReq)
 	if err != nil {
 		s.logger.Error("chat completion failed", "error", err)
+		s.metrics.IncRequests(req.Model, http.StatusBadGateway)
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
@@ -143,6 +151,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	s.metrics.IncRequests(req.Model, http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
