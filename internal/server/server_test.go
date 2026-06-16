@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 type fakeReadyChecker struct {
 	err    error
 	models []ollama.TagModel
+	chat   ollama.ChatResponse
 }
 
 func (f fakeReadyChecker) IsReachable(_ context.Context) error {
@@ -27,6 +29,16 @@ func (f fakeReadyChecker) ListModels(_ context.Context) ([]ollama.TagModel, erro
 		return nil, f.err
 	}
 	return f.models, nil
+}
+
+func (f fakeReadyChecker) Chat(_ context.Context, reqBody ollama.ChatRequest) (ollama.ChatResponse, error) {
+	if f.err != nil {
+		return ollama.ChatResponse{}, f.err
+	}
+	if reqBody.Stream {
+		return ollama.ChatResponse{}, errors.New("expected non-streaming")
+	}
+	return f.chat, nil
 }
 
 func TestHealthEndpoint(t *testing.T) {
@@ -95,5 +107,50 @@ func TestModelsEndpoint(t *testing.T) {
 	}
 	if payload.Object != "list" || len(payload.Data) != 1 || payload.Data[0].ID != "qwen3:32b" {
 		t.Fatalf("unexpected payload: %s", rr.Body.String())
+	}
+}
+
+func TestChatCompletionsEndpoint(t *testing.T) {
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{chat: ollama.ChatResponse{
+		Model:           "qwen3:32b",
+		Message:         ollama.ChatMessage{Role: "assistant", Content: "hi there"},
+		PromptEvalCount: 4,
+		EvalCount:       6,
+	}})
+	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		Model string `json:"model"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Model != "qwen3:32b" || payload.Usage.TotalTokens != 10 {
+		t.Fatalf("unexpected response payload: %s", rr.Body.String())
+	}
+}
+
+func TestChatCompletionsStreamingRejected(t *testing.T) {
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{})
+	body := []byte(`{"model":"qwen3:32b","messages":[],"stream":true}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
 	}
 }
