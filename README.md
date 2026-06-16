@@ -21,3 +21,14 @@ This repository tracks MVP milestones for:
 - `cmd/greenopsd`: binary entrypoint
 - `internal/`: private application packages
 - `pkg/`: public/shared packages (if needed)
+
+## Docker
+
+Build and run:
+
+```bash
+docker build -t greenopsd .
+docker run --rm -p 8000:8000 greenopsd
+```
+
+Container health checks probe both `/health` and `/ready`.

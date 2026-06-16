@@ -17,5 +17,6 @@ COPY --from=build /out/greenopsd /greenopsd
 COPY --from=busybox /bin/busybox /busybox
 
 EXPOSE 8000
+HEALTHCHECK --interval=10s --timeout=3s --retries=5 CMD ["/busybox", "sh", "-c", "/busybox wget -qO- http://127.0.0.1:8000/health >/dev/null && /busybox wget -qO- http://127.0.0.1:8000/ready >/dev/null"]
 USER nonroot:nonroot
 ENTRYPOINT ["/greenopsd"]
