@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoadFromEnvDefaults(t *testing.T) {
 	t.Setenv("GREENOPSD_LISTEN_ADDRESS", "")
@@ -13,11 +16,17 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.Ollama.BaseURL != defaultOllamaBaseURL {
 		t.Fatalf("expected default ollama base url %q, got %q", defaultOllamaBaseURL, cfg.Ollama.BaseURL)
 	}
+	if cfg.RequestTimeout != defaultRequestTimeout || cfg.OllamaTimeout != defaultOllamaTimeout || cfg.StartupTimeout != defaultStartupTimeout {
+		t.Fatalf("expected default timeouts to be loaded")
+	}
 }
 
 func TestLoadFromEnvOverrides(t *testing.T) {
 	t.Setenv("GREENOPSD_LISTEN_ADDRESS", ":9000")
 	t.Setenv("GREENOPSD_OLLAMA_BASE_URL", "http://ollama:11434")
+	t.Setenv("GREENOPSD_REQUEST_TIMEOUT", "30s")
+	t.Setenv("GREENOPSD_OLLAMA_TIMEOUT", "15s")
+	t.Setenv("GREENOPSD_STARTUP_TIMEOUT", "7s")
 
 	cfg := LoadFromEnv()
 	if cfg.ListenAddress != ":9000" {
@@ -25,6 +34,9 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.Ollama.BaseURL != "http://ollama:11434" {
 		t.Fatalf("expected overridden ollama url, got %q", cfg.Ollama.BaseURL)
+	}
+	if cfg.RequestTimeout != 30*time.Second || cfg.OllamaTimeout != 15*time.Second || cfg.StartupTimeout != 7*time.Second {
+		t.Fatalf("expected timeout overrides to be loaded")
 	}
 }
 
