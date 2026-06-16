@@ -20,6 +20,23 @@ type fakeReadyChecker struct {
 	chat   ollama.ChatResponse
 }
 
+type captureModelChecker struct {
+	receivedModel string
+}
+
+func (c *captureModelChecker) IsReachable(_ context.Context) error {
+	return nil
+}
+
+func (c *captureModelChecker) ListModels(_ context.Context) ([]ollama.TagModel, error) {
+	return nil, nil
+}
+
+func (c *captureModelChecker) Chat(_ context.Context, reqBody ollama.ChatRequest) (ollama.ChatResponse, error) {
+	c.receivedModel = reqBody.Model
+	return ollama.ChatResponse{Model: reqBody.Model, Message: ollama.ChatMessage{Role: "assistant", Content: "ok"}}, nil
+}
+
 func (f fakeReadyChecker) IsReachable(_ context.Context) error {
 	return f.err
 }
@@ -152,5 +169,22 @@ func TestChatCompletionsStreamingRejected(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestChatCompletionsModelPassthrough(t *testing.T) {
+	checker := &captureModelChecker{}
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), checker)
+	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	if checker.receivedModel != "qwen3:32b" {
+		t.Fatalf("expected passthrough model qwen3:32b, got %q", checker.receivedModel)
 	}
 }
