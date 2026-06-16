@@ -1,6 +1,11 @@
 package config
 
-import "os"
+import (
+	"fmt"
+	"net"
+	"net/url"
+	"os"
+)
 
 const (
 	defaultListenAddress = ":8000"
@@ -35,4 +40,15 @@ func LoadFromEnv() Config {
 	}
 
 	return cfg
+}
+
+// Validate verifies config values are syntactically valid.
+func Validate(cfg Config) error {
+	if _, err := url.ParseRequestURI(cfg.Ollama.BaseURL); err != nil {
+		return fmt.Errorf("invalid ollama base url: %w", err)
+	}
+	if _, err := net.ResolveTCPAddr("tcp", cfg.ListenAddress); err != nil {
+		return fmt.Errorf("invalid listen address: %w", err)
+	}
+	return nil
 }

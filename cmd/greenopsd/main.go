@@ -13,6 +13,10 @@ import (
 func main() {
 	cfg := config.LoadFromEnv()
 	logger := logging.NewJSONLogger()
+	if err := config.Validate(cfg); err != nil {
+		logger.Error("invalid configuration", "error", err)
+		return
+	}
 
 	ollamaClient, err := ollama.NewClient(cfg.Ollama.BaseURL, http.DefaultClient)
 	if err != nil {

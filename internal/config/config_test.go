@@ -27,3 +27,17 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 		t.Fatalf("expected overridden ollama url, got %q", cfg.Ollama.BaseURL)
 	}
 }
+
+func TestValidateFailsForInvalidURL(t *testing.T) {
+	err := Validate(Config{ListenAddress: ":8000", Ollama: OllamaConfig{BaseURL: "::://bad-url"}})
+	if err == nil {
+		t.Fatalf("expected validation error for invalid URL")
+	}
+}
+
+func TestValidateFailsForInvalidListenAddress(t *testing.T) {
+	err := Validate(Config{ListenAddress: "127.0.0.1:notaport", Ollama: OllamaConfig{BaseURL: "http://localhost:11434"}})
+	if err == nil {
+		t.Fatalf("expected validation error for invalid listen address")
+	}
+}
