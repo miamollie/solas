@@ -3,6 +3,7 @@ package metrics
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -14,6 +15,7 @@ type Metrics struct {
 	Registry *prometheus.Registry
 	handler  http.Handler
 	requests *prometheus.CounterVec
+	duration *prometheus.HistogramVec
 }
 
 // New creates a metrics registry and exporter handler.
@@ -27,11 +29,20 @@ func New() *Metrics {
 		},
 		[]string{"model", "status"},
 	)
-	reg.MustRegister(requests)
+	duration := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "greenops_request_duration_seconds",
+			Help:    "Duration of OpenAI-compatible requests handled by greenopsd.",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"model"},
+	)
+	reg.MustRegister(requests, duration)
 	return &Metrics{
 		Registry: reg,
 		handler:  promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
 		requests: requests,
+		duration: duration,
 	}
 }
 
@@ -46,4 +57,12 @@ func (m *Metrics) IncRequests(model string, status int) {
 		model = "unknown"
 	}
 	m.requests.WithLabelValues(model, strconv.Itoa(status)).Inc()
+}
+
+// ObserveDuration records request duration by model label.
+func (m *Metrics) ObserveDuration(model string, d time.Duration) {
+	if model == "" {
+		model = "unknown"
+	}
+	m.duration.WithLabelValues(model).Observe(d.Seconds())
 }

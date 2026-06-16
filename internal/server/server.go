@@ -68,6 +68,9 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	defer s.metrics.ObserveDuration("all", time.Since(start))
+
 	if s.ready == nil {
 		s.metrics.IncRequests("all", http.StatusBadGateway)
 		http.Error(w, "ollama client unavailable", http.StatusBadGateway)
@@ -95,6 +98,12 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	modelLabel := "unknown"
+	defer func() {
+		s.metrics.ObserveDuration(modelLabel, time.Since(start))
+	}()
+
 	if s.ready == nil {
 		s.metrics.IncRequests("unknown", http.StatusBadGateway)
 		http.Error(w, "ollama client unavailable", http.StatusBadGateway)
@@ -117,6 +126,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "model is required", http.StatusBadRequest)
 		return
 	}
+	modelLabel = req.Model
 
 	ollamaReq := ollama.ChatRequest{
 		Model:  req.Model,

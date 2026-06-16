@@ -224,4 +224,7 @@ func TestRequestMetricIncremented(t *testing.T) {
 	if !strings.Contains(metricsRR.Body.String(), `greenops_requests_total{model="qwen3:32b",status="`+strconv.Itoa(http.StatusOK)+`"} 1`) {
 		t.Fatalf("expected request counter in metrics output, got: %s", metricsRR.Body.String())
 	}
+	if !strings.Contains(metricsRR.Body.String(), `greenops_request_duration_seconds_count{model="qwen3:32b"} 1`) {
+		t.Fatalf("expected duration histogram count in metrics output, got: %s", metricsRR.Body.String())
+	}
 }
