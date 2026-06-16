@@ -161,6 +161,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	s.metrics.AddTokenUsage(req.Model, out.PromptEvalCount, out.EvalCount)
 	s.metrics.IncRequests(req.Model, http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)

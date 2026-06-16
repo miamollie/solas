@@ -210,7 +210,7 @@ func TestMetricsEndpoint(t *testing.T) {
 func TestRequestMetricIncremented(t *testing.T) {
 	m := metrics.New()
 	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeReadyChecker{chat: ollama.ChatResponse{
-		Model: "qwen3:32b", Message: ollama.ChatMessage{Role: "assistant", Content: "ok"},
+		Model: "qwen3:32b", Message: ollama.ChatMessage{Role: "assistant", Content: "ok"}, PromptEvalCount: 4, EvalCount: 6,
 	}}, m)
 	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
@@ -226,5 +226,11 @@ func TestRequestMetricIncremented(t *testing.T) {
 	}
 	if !strings.Contains(metricsRR.Body.String(), `greenops_request_duration_seconds_count{model="qwen3:32b"} 1`) {
 		t.Fatalf("expected duration histogram count in metrics output, got: %s", metricsRR.Body.String())
+	}
+	if !strings.Contains(metricsRR.Body.String(), `greenops_prompt_tokens_total{model="qwen3:32b"} 4`) {
+		t.Fatalf("expected prompt token metric in metrics output, got: %s", metricsRR.Body.String())
+	}
+	if !strings.Contains(metricsRR.Body.String(), `greenops_completion_tokens_total{model="qwen3:32b"} 6`) {
+		t.Fatalf("expected completion token metric in metrics output, got: %s", metricsRR.Body.String())
 	}
 }

@@ -16,6 +16,8 @@ type Metrics struct {
 	handler  http.Handler
 	requests *prometheus.CounterVec
 	duration *prometheus.HistogramVec
+	prompt   *prometheus.CounterVec
+	output   *prometheus.CounterVec
 }
 
 // New creates a metrics registry and exporter handler.
@@ -37,12 +39,28 @@ func New() *Metrics {
 		},
 		[]string{"model"},
 	)
-	reg.MustRegister(requests, duration)
+	prompt := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "greenops_prompt_tokens_total",
+			Help: "Total prompt tokens processed by greenopsd.",
+		},
+		[]string{"model"},
+	)
+	output := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "greenops_completion_tokens_total",
+			Help: "Total completion tokens processed by greenopsd.",
+		},
+		[]string{"model"},
+	)
+	reg.MustRegister(requests, duration, prompt, output)
 	return &Metrics{
 		Registry: reg,
 		handler:  promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
 		requests: requests,
 		duration: duration,
+		prompt:   prompt,
+		output:   output,
 	}
 }
 
@@ -65,4 +83,13 @@ func (m *Metrics) ObserveDuration(model string, d time.Duration) {
 		model = "unknown"
 	}
 	m.duration.WithLabelValues(model).Observe(d.Seconds())
+}
+
+// AddTokenUsage increments token counters by model.
+func (m *Metrics) AddTokenUsage(model string, promptTokens, completionTokens int) {
+	if model == "" {
+		model = "unknown"
+	}
+	m.prompt.WithLabelValues(model).Add(float64(promptTokens))
+	m.output.WithLabelValues(model).Add(float64(completionTokens))
 }
