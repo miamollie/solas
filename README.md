@@ -12,6 +12,10 @@ This repository tracks MVP milestones for:
 - Client attribution labels
 - Docker deployment
 
+## Logging
+
+`greenopsd` uses structured `slog` logging in JSON format and assigns request IDs via `X-Request-ID`.
+
 ## Project Layout
 
 - `cmd/greenopsd`: binary entrypoint
