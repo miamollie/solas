@@ -39,6 +39,7 @@ docker run -d \
   grafana/grafana:latest
 
 ```
+- might need to configure it to look at the right endpoint (tbd: http://host.docker.internal:9090)
 
 ### Now you've got
 

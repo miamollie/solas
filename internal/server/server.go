@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/miamollie/greenops-local-llm/internal/httpx"
 	"github.com/miamollie/greenops-local-llm/internal/metrics"
 	"github.com/miamollie/greenops-local-llm/internal/ollama"
@@ -34,23 +35,27 @@ type readinessChecker interface {
 
 // New creates a server with baseline routes.
 func New(logger *slog.Logger, ready readinessChecker, met *metrics.Metrics) *Server {
-	mux := http.NewServeMux()
 	if met == nil {
 		met = metrics.New()
 	}
 	s := &Server{logger: logger, ready: ready, metrics: met}
 
-	// For general health checks
-	mux.HandleFunc("GET /health", s.handleHealth)
-	mux.HandleFunc("GET /ready", s.handleReady)
-	// For openAI compatibility
-	mux.HandleFunc("GET /v1/models", s.handleModels)
-	mux.HandleFunc("POST /v1/chat/completions", s.handleChatCompletions)
-	// For prometheus scrape
-	mux.Handle("GET /metrics", s.metrics.Handler())
+	r := chi.NewRouter()
+	r.Use(httpx.RequestIDMiddleware)
 
-	h := httpx.RequestIDMiddleware(httpx.LoggingMiddleware(logger, mux))
-	s.handler = h
+	// infra routes — no logging
+	r.Get("/health", s.handleHealth)
+	r.Get("/ready", s.handleReady)
+	r.Handle("/metrics", s.metrics.Handler())
+
+	// openAI group — request logging applied only here
+	r.Group(func(r chi.Router) {
+		r.Use(httpx.LoggingMiddleware(logger))
+		r.Get("/v1/models", s.handleModels)
+		r.Post("/v1/chat/completions", s.handleChatCompletions)
+	})
+
+	s.handler = r
 	return s
 }
 
