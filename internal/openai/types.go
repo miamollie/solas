@@ -53,9 +53,9 @@ type ChatCompletionChunkResponse struct {
 
 // ChatCompletionChunkChoice is a single OpenAI-compatible stream delta choice.
 type ChatCompletionChunkChoice struct {
-	Index        int               `json:"index"`
-	Delta        ChatMessageDelta  `json:"delta"`
-	FinishReason *string           `json:"finish_reason"`
+	Index        int              `json:"index"`
+	Delta        ChatMessageDelta `json:"delta"`
+	FinishReason *string          `json:"finish_reason"`
 }
 
 // ChatMessageDelta contains incremental streamed token content.
