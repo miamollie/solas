@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/miamollie/greenops-local-llm/internal/metrics"
 	"github.com/miamollie/greenops-local-llm/internal/ollama"
 	"github.com/miamollie/greenops-local-llm/internal/openai"
+	"github.com/miamollie/greenops-local-llm/internal/streaming"
 )
 
 // Server provides HTTP handlers for greenopsd.
@@ -81,11 +81,9 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	defer s.metrics.ObserveDuration("all", time.Since(start))
-	client, userAgent, remoteIP := requestAttribution(r)
 
 	if s.ready == nil {
 		s.metrics.IncRequests("all", http.StatusBadGateway)
-		s.metrics.IncClientRequest("all", http.StatusBadGateway, client, userAgent, remoteIP)
 		http.Error(w, "ollama client unavailable", http.StatusBadGateway)
 		return
 	}
@@ -97,7 +95,6 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusRequestTimeout
 		}
 		s.metrics.IncRequests("all", status)
-		s.metrics.IncClientRequest("all", status, client, userAgent, remoteIP)
 		http.Error(w, "upstream error", status)
 		return
 	}
@@ -107,7 +104,6 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		resp.Data = append(resp.Data, openai.ModelInfo{ID: m.Name, Object: "model", OwnedBy: "ollama"})
 	}
 	s.metrics.IncRequests("all", http.StatusOK)
-	s.metrics.IncClientRequest("all", http.StatusOK, client, userAgent, remoteIP)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
@@ -115,14 +111,12 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	modelLabel := "unknown"
-	client, userAgent, remoteIP := requestAttribution(r)
 	defer func() {
 		s.metrics.ObserveDuration(modelLabel, time.Since(start))
 	}()
 
 	if s.ready == nil {
 		s.metrics.IncRequests("unknown", http.StatusBadGateway)
-		s.metrics.IncClientRequest("unknown", http.StatusBadGateway, client, userAgent, remoteIP)
 		http.Error(w, "ollama client unavailable", http.StatusBadGateway)
 		return
 	}
@@ -130,19 +124,17 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	var req openai.ChatCompletionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.metrics.IncRequests("unknown", http.StatusBadRequest)
-		s.metrics.IncClientRequest("unknown", http.StatusBadRequest, client, userAgent, remoteIP)
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
 	if req.Model == "" {
 		s.metrics.IncRequests("unknown", http.StatusBadRequest)
-		s.metrics.IncClientRequest("unknown", http.StatusBadRequest, client, userAgent, remoteIP)
 		http.Error(w, "model is required", http.StatusBadRequest)
 		return
 	}
 	modelLabel = req.Model
 	if req.Stream {
-		s.handleChatCompletionsStream(w, r, req, client, userAgent, remoteIP)
+		s.handleChatCompletionsStream(w, r, req)
 		return
 	}
 
@@ -158,11 +150,10 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("chat completion failed", "error", err)
 		s.metrics.IncRequests(req.Model, http.StatusBadGateway)
-		s.metrics.IncClientRequest(req.Model, http.StatusBadGateway, client, userAgent, remoteIP)
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
-
+	//missing role?
 	resp := openai.ChatCompletionResponse{
 		ID:      fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano()),
 		Object:  "chat.completion",
@@ -182,7 +173,6 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	s.metrics.AddTokenUsage(req.Model, out.PromptEvalCount, out.EvalCount)
 	s.metrics.IncRequests(req.Model, http.StatusOK)
-	s.metrics.IncClientRequest(req.Model, http.StatusOK, client, userAgent, remoteIP)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
@@ -191,9 +181,6 @@ func (s *Server) handleChatCompletionsStream(
 	w http.ResponseWriter,
 	r *http.Request,
 	req openai.ChatCompletionRequest,
-	client string,
-	userAgent string,
-	remoteIP string,
 ) {
 	flush := func() {}
 	if flusher, ok := w.(http.Flusher); ok {
@@ -205,11 +192,13 @@ func (s *Server) handleChatCompletionsStream(
 		ollamaReq.Messages = append(ollamaReq.Messages, ollama.ChatMessage{Role: m.Role, Content: m.Content})
 	}
 
-	stream, err := s.ready.ChatStream(r.Context(), ollamaReq)
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+
+	stream, err := s.ready.ChatStream(ctx, ollamaReq)
 	if err != nil {
 		s.logger.Error("chat stream failed", "error", err)
 		s.metrics.IncRequests(req.Model, http.StatusBadGateway)
-		s.metrics.IncClientRequest(req.Model, http.StatusBadGateway, client, userAgent, remoteIP)
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
@@ -220,111 +209,58 @@ func (s *Server) handleChatCompletionsStream(
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	dec := json.NewDecoder(stream)
-	streamID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
-	created := time.Now().Unix()
-	firstChunk := true
+	encoder := streaming.NewOpenAIChunkEncoder(req.Model, time.Now())
 	totalPromptTokens := 0
 	totalCompletionTokens := 0
 
-	for {
-		var chunk ollama.ChatResponse
-		if err := dec.Decode(&chunk); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
+	emitChunk := func(line []byte) (bool, error) {
+		chunk, err := streaming.ParseOllamaChunk(line)
+		if err != nil {
 			s.logger.Error("chat stream decode failed", "error", err)
 			s.metrics.IncRequests(req.Model, http.StatusBadGateway)
-			s.metrics.IncClientRequest(req.Model, http.StatusBadGateway, client, userAgent, remoteIP)
-			return
+			return false, err
 		}
 
-		respModel := chunk.Model
-		if respModel == "" {
-			respModel = req.Model
-		}
-		delta := openai.ChatMessageDelta{Content: chunk.Message.Content}
-		if firstChunk {
-			delta.Role = "assistant"
-			if chunk.Message.Role != "" {
-				delta.Role = chunk.Message.Role
-			}
-		}
-
-		var finishReason *string
-		if chunk.Done {
-			reason := "stop"
-			if chunk.DoneReason == "" && chunk.Message.Content == "" {
-				reason = "stop"
-			}
-			finishReason = &reason
-			totalPromptTokens = chunk.PromptEvalCount
-			totalCompletionTokens = chunk.EvalCount
-		}
-
-		payload := openai.ChatCompletionChunkResponse{
-			ID:      streamID,
-			Object:  "chat.completion.chunk",
-			Created: created,
-			Model:   respModel,
-			Choices: []openai.ChatCompletionChunkChoice{{
-				Index:        0,
-				Delta:        delta,
-				FinishReason: finishReason,
-			}},
-		}
-
-		raw, err := json.Marshal(payload)
+		raw, meta, err := encoder.Encode(chunk)
 		if err != nil {
 			s.logger.Error("chat stream encode failed", "error", err)
 			s.metrics.IncRequests(req.Model, http.StatusInternalServerError)
-			s.metrics.IncClientRequest(req.Model, http.StatusInternalServerError, client, userAgent, remoteIP)
-			return
+			return false, err
+		}
+
+		if meta.Done {
+			totalPromptTokens = meta.PromptTokens
+			totalCompletionTokens = meta.CompletionTokens
 		}
 
 		if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
 			s.logger.Error("chat stream write failed", "error", err)
 			s.metrics.IncRequests(req.Model, http.StatusBadGateway)
-			s.metrics.IncClientRequest(req.Model, http.StatusBadGateway, client, userAgent, remoteIP)
-			return
+			return false, err
 		}
 		flush()
-		firstChunk = false
 
-		if chunk.Done {
-			break
+		return meta.Done, nil
+	}
+
+	if err := streaming.ConsumeNDJSON(ctx, stream, emitChunk); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			s.logger.Warn("chat stream context canceled", "error", err)
+			s.metrics.IncRequests(req.Model, http.StatusRequestTimeout)
+			return
 		}
+		s.logger.Error("chat stream read failed", "error", err)
+		s.metrics.IncRequests(req.Model, http.StatusBadGateway)
+		return
 	}
 
 	if _, err := io.WriteString(w, "data: [DONE]\n\n"); err != nil {
 		s.logger.Error("chat stream terminal write failed", "error", err)
 		s.metrics.IncRequests(req.Model, http.StatusBadGateway)
-		s.metrics.IncClientRequest(req.Model, http.StatusBadGateway, client, userAgent, remoteIP)
 		return
 	}
 	flush()
 
 	s.metrics.AddTokenUsage(req.Model, totalPromptTokens, totalCompletionTokens)
 	s.metrics.IncRequests(req.Model, http.StatusOK)
-	s.metrics.IncClientRequest(req.Model, http.StatusOK, client, userAgent, remoteIP)
-}
-
-func requestAttribution(r *http.Request) (client string, userAgent string, remoteIP string) {
-	client = r.Header.Get("X-GreenOps-Client")
-	userAgent = r.UserAgent()
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	remoteIP = host
-	if remoteIP == "" {
-		remoteIP = "unknown"
-	}
-	if userAgent == "" {
-		userAgent = "unknown"
-	}
-	if client == "" {
-		client = "unknown"
-	}
-	return client, userAgent, remoteIP
 }
