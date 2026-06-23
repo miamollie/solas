@@ -291,7 +291,7 @@ func TestRequestMetricIncremented(t *testing.T) {
 	}, modelsAny: llmclients.OpenAIModelsResponse{Object: "list"}}, fakeLLMClient{chat: llmclients.ChatResponse{
 		Model: "qwen3:32b", Message: llmclients.Message{Role: "assistant", Content: "ok"}, PromptTokens: 4, CompletionTokens: 6,
 	}, modelsAny: llmclients.OllamaTagsResponse{}}, m)
-	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
+	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"system","content":"ctx"},{"role":"user","content":"hello"},{"role":"assistant","content":"ok"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rr, req)
@@ -306,11 +306,20 @@ func TestRequestMetricIncremented(t *testing.T) {
 	if !strings.Contains(metricsRR.Body.String(), `solas_request_duration_seconds_count{model="qwen3:32b"} 1`) {
 		t.Fatalf("expected duration histogram count in metrics output, got: %s", metricsRR.Body.String())
 	}
-	if !strings.Contains(metricsRR.Body.String(), `solas_prompt_tokens_total{model="qwen3:32b"} 4`) {
-		t.Fatalf("expected prompt token metric in metrics output, got: %s", metricsRR.Body.String())
+	if !strings.Contains(metricsRR.Body.String(), `solas_input_total_tokens_total{model="qwen3:32b"} 4`) {
+		t.Fatalf("expected total input token metric in metrics output, got: %s", metricsRR.Body.String())
 	}
-	if !strings.Contains(metricsRR.Body.String(), `solas_completion_tokens_total{model="qwen3:32b"} 6`) {
-		t.Fatalf("expected completion token metric in metrics output, got: %s", metricsRR.Body.String())
+	if !strings.Contains(metricsRR.Body.String(), `solas_input_user_tokens_total{model="qwen3:32b"} 1`) {
+		t.Fatalf("expected user input token metric in metrics output, got: %s", metricsRR.Body.String())
+	}
+	if !strings.Contains(metricsRR.Body.String(), `solas_input_accumulated_tokens_total{model="qwen3:32b"} 2`) {
+		t.Fatalf("expected accumulated input token metric in metrics output, got: %s", metricsRR.Body.String())
+	}
+	if !strings.Contains(metricsRR.Body.String(), `solas_input_overhead_tokens_total{model="qwen3:32b"} 1`) {
+		t.Fatalf("expected overhead input token metric in metrics output, got: %s", metricsRR.Body.String())
+	}
+	if !strings.Contains(metricsRR.Body.String(), `solas_output_tokens_total{model="qwen3:32b"} 6`) {
+		t.Fatalf("expected output token metric in metrics output, got: %s", metricsRR.Body.String())
 	}
 }
 

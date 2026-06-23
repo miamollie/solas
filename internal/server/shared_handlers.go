@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/miamollie/solas/internal/llmclients"
+	"github.com/miamollie/solas/internal/tokens"
 )
 
 func (s *Server) handleModels(client llmclients.Client) http.HandlerFunc {
@@ -50,9 +51,10 @@ func (s *Server) handleChat(client llmclients.Client, codec chatCodec) http.Hand
 			return
 		}
 		modelLabel = modelName
+		tokenBreakdown := tokens.AnalyzeMessages(sharedReq.Messages)
 
 		if sharedReq.Stream {
-			s.handleChatStream(w, r, client, codec, sharedReq)
+			s.handleChatStream(w, r, client, codec, sharedReq, tokenBreakdown)
 			return
 		}
 
@@ -64,7 +66,7 @@ func (s *Server) handleChat(client llmclients.Client, codec chatCodec) http.Hand
 			return
 		}
 
-		s.metrics.AddTokenUsage(modelName, out.PromptTokens, out.CompletionTokens)
+		s.metrics.AddTokenUsage(modelName, out.PromptTokens, tokenBreakdown.CurrentUserTokens, tokenBreakdown.AccumulatedTokens, out.CompletionTokens)
 		s.metrics.IncRequests(modelName, http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(codec.EncodeResponse(out))
@@ -77,9 +79,10 @@ func (s *Server) handleChatStream(
 	client llmclients.Client,
 	codec chatCodec,
 	req llmclients.ChatRequest,
+	tokenBreakdown tokens.Breakdown,
 ) {
 	emitChunk, finalize := codec.PrepareStream(w, req.Model)
-	promptTokens, completionTokens, status, err := s.runChatStream(r.Context(), client, req, func(_ []byte, chunk llmclients.StreamChunk) error {
+	inputTotalTokens, completionTokens, status, err := s.runChatStream(r.Context(), client, req, func(_ []byte, chunk llmclients.StreamChunk) error {
 		return emitChunk(chunk)
 	})
 	if err != nil {
@@ -95,6 +98,6 @@ func (s *Server) handleChatStream(
 		return
 	}
 
-	s.metrics.AddTokenUsage(req.Model, promptTokens, completionTokens)
+	s.metrics.AddTokenUsage(req.Model, inputTotalTokens, tokenBreakdown.CurrentUserTokens, tokenBreakdown.AccumulatedTokens, completionTokens)
 	s.metrics.IncRequests(req.Model, http.StatusOK)
 }
