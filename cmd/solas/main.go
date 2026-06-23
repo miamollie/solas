@@ -38,18 +38,6 @@ func main() {
 		return
 	}
 
-	startupCtx, cancel := context.WithTimeout(context.Background(), cfg.StartupTimeout)
-	defer cancel()
-	// todo remove readiness checks - or only check which client the user actually wants (read from CLI)
-	if err := ollamaClient.Ready(startupCtx); err != nil {
-		logger.Error("startup ollama readiness check failed", "error", err)
-		return
-	}
-	if err := openAIClient.Ready(startupCtx); err != nil {
-		logger.Error("startup openai readiness check failed", "error", err)
-		return
-	}
-
 	met := metrics.New()
 	srv := server.New(logger, openAIClient, ollamaClient, met)
 	handler := http.TimeoutHandler(srv.Handler(), cfg.RequestTimeout, `{"error":"request timeout"}`)
