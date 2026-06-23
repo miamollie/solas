@@ -21,7 +21,7 @@ func TestLoadFromEnvDefaults(t *testing.T) {
 	if cfg.OpenAI.BaseURL != defaultOpenAIBaseURL {
 		t.Fatalf("expected default openai base url %q, got %q", defaultOpenAIBaseURL, cfg.OpenAI.BaseURL)
 	}
-	if cfg.RequestTimeout != defaultRequestTimeout || cfg.OllamaTimeout != defaultOllamaTimeout || cfg.OpenAITimeout != defaultOpenAITimeout || cfg.StartupTimeout != defaultStartupTimeout {
+	if cfg.RequestTimeout != defaultRequestTimeout || cfg.OllamaTimeout != defaultOllamaTimeout || cfg.OpenAITimeout != defaultOpenAITimeout || cfg.StartupTimeout != defaultStartupTimeout || cfg.PowerInterval != defaultPowerInterval {
 		t.Fatalf("expected default timeouts to be loaded")
 	}
 }
@@ -35,6 +35,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	t.Setenv("SOLAS_OLLAMA_TIMEOUT", "15s")
 	t.Setenv("SOLAS_OPENAI_TIMEOUT", "12s")
 	t.Setenv("SOLAS_STARTUP_TIMEOUT", "7s")
+	t.Setenv("SOLAS_POWER_SAMPLE_INTERVAL", "3s")
 
 	cfg := LoadFromEnv()
 	if cfg.ListenAddress != ":9000" {
@@ -46,27 +47,27 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.OpenAI.BaseURL != "http://openai-proxy:8080" || cfg.OpenAI.APIKey != "test-key" {
 		t.Fatalf("expected overridden openai config")
 	}
-	if cfg.RequestTimeout != 30*time.Second || cfg.OllamaTimeout != 15*time.Second || cfg.OpenAITimeout != 12*time.Second || cfg.StartupTimeout != 7*time.Second {
+	if cfg.RequestTimeout != 30*time.Second || cfg.OllamaTimeout != 15*time.Second || cfg.OpenAITimeout != 12*time.Second || cfg.StartupTimeout != 7*time.Second || cfg.PowerInterval != 3*time.Second {
 		t.Fatalf("expected timeout overrides to be loaded")
 	}
 }
 
 func TestValidateFailsForInvalidURL(t *testing.T) {
-	err := Validate(Config{ListenAddress: ":8000", Ollama: OllamaConfig{BaseURL: "::://bad-url"}, OpenAI: OpenAIConfig{BaseURL: "https://api.openai.com"}, RequestTimeout: time.Second, OllamaTimeout: time.Second, OpenAITimeout: time.Second, StartupTimeout: time.Second})
+	err := Validate(Config{ListenAddress: ":8000", Ollama: OllamaConfig{BaseURL: "::://bad-url"}, OpenAI: OpenAIConfig{BaseURL: "https://api.openai.com"}, RequestTimeout: time.Second, OllamaTimeout: time.Second, OpenAITimeout: time.Second, StartupTimeout: time.Second, PowerInterval: time.Second})
 	if err == nil {
 		t.Fatalf("expected validation error for invalid URL")
 	}
 }
 
 func TestValidateFailsForInvalidOpenAIURL(t *testing.T) {
-	err := Validate(Config{ListenAddress: ":8000", Ollama: OllamaConfig{BaseURL: "http://127.0.0.1:11434"}, OpenAI: OpenAIConfig{BaseURL: "::://bad-url"}, RequestTimeout: time.Second, OllamaTimeout: time.Second, OpenAITimeout: time.Second, StartupTimeout: time.Second})
+	err := Validate(Config{ListenAddress: ":8000", Ollama: OllamaConfig{BaseURL: "http://127.0.0.1:11434"}, OpenAI: OpenAIConfig{BaseURL: "::://bad-url"}, RequestTimeout: time.Second, OllamaTimeout: time.Second, OpenAITimeout: time.Second, StartupTimeout: time.Second, PowerInterval: time.Second})
 	if err == nil {
 		t.Fatalf("expected validation error for invalid openai URL")
 	}
 }
 
 func TestValidateFailsForInvalidListenAddress(t *testing.T) {
-	err := Validate(Config{ListenAddress: "127.0.0.1:notaport", Ollama: OllamaConfig{BaseURL: "http://127.0.0.1:11434"}, OpenAI: OpenAIConfig{BaseURL: "https://api.openai.com"}, RequestTimeout: time.Second, OllamaTimeout: time.Second, OpenAITimeout: time.Second, StartupTimeout: time.Second})
+	err := Validate(Config{ListenAddress: "127.0.0.1:notaport", Ollama: OllamaConfig{BaseURL: "http://127.0.0.1:11434"}, OpenAI: OpenAIConfig{BaseURL: "https://api.openai.com"}, RequestTimeout: time.Second, OllamaTimeout: time.Second, OpenAITimeout: time.Second, StartupTimeout: time.Second, PowerInterval: time.Second})
 	if err == nil {
 		t.Fatalf("expected validation error for invalid listen address")
 	}

@@ -52,6 +52,9 @@ func (s *Server) handleChat(client llmclients.Client, codec chatCodec) http.Hand
 		}
 		modelLabel = modelName
 		tokenBreakdown := tokens.AnalyzeMessages(sharedReq.Messages)
+		provider := codec.Name()
+		s.metrics.IncInFlight(provider)
+		defer s.metrics.DecInFlight(provider)
 
 		if sharedReq.Stream {
 			s.handleChatStream(w, r, client, codec, sharedReq, tokenBreakdown)

@@ -16,6 +16,7 @@ const (
 	defaultOllamaTimeout  = 60 * time.Second
 	defaultOpenAITimeout  = 60 * time.Second
 	defaultStartupTimeout = 10 * time.Second
+	defaultPowerInterval  = 5 * time.Second
 )
 
 // Config contains process-level settings.
@@ -27,6 +28,7 @@ type Config struct {
 	OllamaTimeout  time.Duration
 	OpenAITimeout  time.Duration
 	StartupTimeout time.Duration
+	PowerInterval  time.Duration
 }
 
 // OllamaConfig stores upstream Ollama settings.
@@ -54,6 +56,7 @@ func LoadFromEnv() Config {
 		OllamaTimeout:  defaultOllamaTimeout,
 		OpenAITimeout:  defaultOpenAITimeout,
 		StartupTimeout: defaultStartupTimeout,
+		PowerInterval:  defaultPowerInterval,
 	}
 
 	if v := os.Getenv("SOLAS_LISTEN_ADDRESS"); v != "" {
@@ -88,6 +91,11 @@ func LoadFromEnv() Config {
 			cfg.StartupTimeout = d
 		}
 	}
+	if v := os.Getenv("SOLAS_POWER_SAMPLE_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.PowerInterval = d
+		}
+	}
 
 	return cfg
 }
@@ -103,7 +111,7 @@ func Validate(cfg Config) error {
 	if _, err := net.ResolveTCPAddr("tcp", cfg.ListenAddress); err != nil {
 		return fmt.Errorf("invalid listen address: %w", err)
 	}
-	if cfg.RequestTimeout <= 0 || cfg.OllamaTimeout <= 0 || cfg.OpenAITimeout <= 0 || cfg.StartupTimeout <= 0 {
+	if cfg.RequestTimeout <= 0 || cfg.OllamaTimeout <= 0 || cfg.OpenAITimeout <= 0 || cfg.StartupTimeout <= 0 || cfg.PowerInterval <= 0 {
 		return fmt.Errorf("timeouts must be greater than zero")
 	}
 	return nil

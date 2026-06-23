@@ -3,6 +3,7 @@ package metrics
 import (
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,13 +15,23 @@ import (
 type Metrics struct {
 	Registry      *prometheus.Registry
 	handler       http.Handler
+	mu            sync.RWMutex
+	inflightCount map[string]int64
 	requests      *prometheus.CounterVec
 	duration      *prometheus.HistogramVec
+	inflight      *prometheus.GaugeVec
 	inputTotal    *prometheus.CounterVec
 	inputUser     *prometheus.CounterVec
 	inputAccum    *prometheus.CounterVec
 	inputOverhead *prometheus.CounterVec
 	output        *prometheus.CounterVec
+	powerCPU      prometheus.Gauge
+	powerGPU      prometheus.Gauge
+	powerTotal    prometheus.Gauge
+	powerHealthy  prometheus.Gauge
+	processPID    *prometheus.GaugeVec
+	processCPU    *prometheus.GaugeVec
+	processRSS    *prometheus.GaugeVec
 }
 
 // New creates a metrics registry and exporter handler.
@@ -41,6 +52,13 @@ func New() *Metrics {
 			Buckets: prometheus.DefBuckets,
 		},
 		[]string{"model"},
+	)
+	inflight := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solas_llm_inflight_requests",
+			Help: "Current number of in-flight upstream LLM requests by provider.",
+		},
+		[]string{"provider"},
 	)
 	inputTotal := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -77,17 +95,63 @@ func New() *Metrics {
 		},
 		[]string{"model"},
 	)
-	reg.MustRegister(requests, duration, inputTotal, inputUser, inputAccum, inputOverhead, output)
+	powerCPU := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "solas_power_cpu_watts",
+		Help: "Latest device CPU power reading in watts.",
+	})
+	powerGPU := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "solas_power_gpu_watts",
+		Help: "Latest device GPU power reading in watts.",
+	})
+	powerTotal := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "solas_power_total_watts",
+		Help: "Latest total device power reading in watts.",
+	})
+	powerHealthy := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "solas_power_collector_healthy",
+		Help: "Power collector health status (1 healthy, 0 unhealthy).",
+	})
+	processPID := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solas_llm_process_pid",
+			Help: "Resolved local process id for each configured LLM provider (0 if unknown).",
+		},
+		[]string{"provider"},
+	)
+	processCPU := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solas_llm_process_cpu_percent",
+			Help: "Latest sampled CPU percentage for the resolved local LLM process.",
+		},
+		[]string{"provider"},
+	)
+	processRSS := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solas_llm_process_rss_bytes",
+			Help: "Latest sampled RSS memory in bytes for the resolved local LLM process.",
+		},
+		[]string{"provider"},
+	)
+	reg.MustRegister(requests, duration, inflight, inputTotal, inputUser, inputAccum, inputOverhead, output, powerCPU, powerGPU, powerTotal, powerHealthy, processPID, processCPU, processRSS)
 	return &Metrics{
 		Registry:      reg,
 		handler:       promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
+		inflightCount: map[string]int64{},
 		requests:      requests,
 		duration:      duration,
+		inflight:      inflight,
 		inputTotal:    inputTotal,
 		inputUser:     inputUser,
 		inputAccum:    inputAccum,
 		inputOverhead: inputOverhead,
 		output:        output,
+		powerCPU:      powerCPU,
+		powerGPU:      powerGPU,
+		powerTotal:    powerTotal,
+		powerHealthy:  powerHealthy,
+		processPID:    processPID,
+		processCPU:    processCPU,
+		processRSS:    processRSS,
 	}
 }
 
@@ -112,6 +176,40 @@ func (m *Metrics) ObserveDuration(model string, d time.Duration) {
 	m.duration.WithLabelValues(model).Observe(d.Seconds())
 }
 
+// IncInFlight increments the in-flight request gauge by provider.
+func (m *Metrics) IncInFlight(provider string) {
+	if provider == "" {
+		provider = "unknown"
+	}
+	m.mu.Lock()
+	m.inflightCount[provider]++
+	m.mu.Unlock()
+	m.inflight.WithLabelValues(provider).Inc()
+}
+
+// DecInFlight decrements the in-flight request gauge by provider.
+func (m *Metrics) DecInFlight(provider string) {
+	if provider == "" {
+		provider = "unknown"
+	}
+	m.mu.Lock()
+	if m.inflightCount[provider] > 0 {
+		m.inflightCount[provider]--
+	}
+	m.mu.Unlock()
+	m.inflight.WithLabelValues(provider).Dec()
+}
+
+// InFlight returns the current in-memory in-flight count for a provider.
+func (m *Metrics) InFlight(provider string) int64 {
+	if provider == "" {
+		provider = "unknown"
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.inflightCount[provider]
+}
+
 // AddTokenUsage increments input and output token counters by model.
 func (m *Metrics) AddTokenUsage(model string, inputTotalTokens, inputUserTokens, inputAccumulatedTokens, outputTokens int) {
 	if model == "" {
@@ -126,4 +224,30 @@ func (m *Metrics) AddTokenUsage(model string, inputTotalTokens, inputUserTokens,
 	m.inputAccum.WithLabelValues(model).Add(float64(inputAccumulatedTokens))
 	m.inputOverhead.WithLabelValues(model).Add(float64(inputOverheadTokens))
 	m.output.WithLabelValues(model).Add(float64(outputTokens))
+}
+
+// SetPowerSample stores the latest machine power sample gauges.
+func (m *Metrics) SetPowerSample(cpuWatts, gpuWatts, totalWatts float64) {
+	m.powerCPU.Set(cpuWatts)
+	m.powerGPU.Set(gpuWatts)
+	m.powerTotal.Set(totalWatts)
+}
+
+// SetPowerCollectorHealthy sets the collector health gauge.
+func (m *Metrics) SetPowerCollectorHealthy(healthy bool) {
+	if healthy {
+		m.powerHealthy.Set(1)
+		return
+	}
+	m.powerHealthy.Set(0)
+}
+
+// SetLLMProcessMetrics stores resolved local process metrics by provider.
+func (m *Metrics) SetLLMProcessMetrics(provider string, pid int, cpuPercent float64, rssBytes float64) {
+	if provider == "" {
+		provider = "unknown"
+	}
+	m.processPID.WithLabelValues(provider).Set(float64(pid))
+	m.processCPU.WithLabelValues(provider).Set(cpuPercent)
+	m.processRSS.WithLabelValues(provider).Set(rssBytes)
 }

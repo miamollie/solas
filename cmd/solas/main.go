@@ -13,6 +13,7 @@ import (
 	"github.com/miamollie/solas/internal/llmclients"
 	"github.com/miamollie/solas/internal/logging"
 	"github.com/miamollie/solas/internal/metrics"
+	"github.com/miamollie/solas/internal/power"
 	"github.com/miamollie/solas/internal/server"
 )
 
@@ -48,15 +49,27 @@ func main() {
 	}
 
 	errCh := make(chan error, 1)
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	profiler := power.NewProfiler(
+		power.NewMacOSCollector(),
+		met,
+		logger,
+		cfg.PowerInterval,
+		map[string]string{
+			"ollama": cfg.Ollama.BaseURL,
+			"openai": cfg.OpenAI.BaseURL,
+		},
+	)
+	go profiler.Start(sigCtx)
+
 	go func() {
 		logger.Info("starting solas", "listen_address", cfg.ListenAddress)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
 	}()
-
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	select {
 	case <-sigCtx.Done():
