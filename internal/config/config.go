@@ -9,25 +9,35 @@ import (
 )
 
 const (
-	defaultListenAddress = ":8000"
-	defaultOllamaBaseURL = "http://127.0.0.1:11434"
+	defaultListenAddress  = ":8000"
+	defaultOllamaBaseURL  = "http://127.0.0.1:11434"
+	defaultOpenAIBaseURL  = "https://api.openai.com"
 	defaultRequestTimeout = 60 * time.Second
 	defaultOllamaTimeout  = 60 * time.Second
+	defaultOpenAITimeout  = 60 * time.Second
 	defaultStartupTimeout = 10 * time.Second
 )
 
 // Config contains process-level settings.
 type Config struct {
-	ListenAddress string
-	Ollama        OllamaConfig
+	ListenAddress  string
+	Ollama         OllamaConfig
+	OpenAI         OpenAIConfig
 	RequestTimeout time.Duration
 	OllamaTimeout  time.Duration
+	OpenAITimeout  time.Duration
 	StartupTimeout time.Duration
 }
 
 // OllamaConfig stores upstream Ollama settings.
 type OllamaConfig struct {
 	BaseURL string
+}
+
+// OpenAIConfig stores upstream OpenAI settings.
+type OpenAIConfig struct {
+	BaseURL string
+	APIKey  string
 }
 
 // LoadFromEnv builds config with sensible defaults and environment overrides.
@@ -37,8 +47,12 @@ func LoadFromEnv() Config {
 		Ollama: OllamaConfig{
 			BaseURL: defaultOllamaBaseURL,
 		},
+		OpenAI: OpenAIConfig{
+			BaseURL: defaultOpenAIBaseURL,
+		},
 		RequestTimeout: defaultRequestTimeout,
 		OllamaTimeout:  defaultOllamaTimeout,
+		OpenAITimeout:  defaultOpenAITimeout,
 		StartupTimeout: defaultStartupTimeout,
 	}
 
@@ -48,6 +62,12 @@ func LoadFromEnv() Config {
 	if v := os.Getenv("SOLAS_OLLAMA_BASE_URL"); v != "" {
 		cfg.Ollama.BaseURL = v
 	}
+	if v := os.Getenv("SOLAS_OPENAI_BASE_URL"); v != "" {
+		cfg.OpenAI.BaseURL = v
+	}
+	if v := os.Getenv("SOLAS_OPENAI_API_KEY"); v != "" {
+		cfg.OpenAI.APIKey = v
+	}
 	if v := os.Getenv("SOLAS_REQUEST_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.RequestTimeout = d
@@ -56,6 +76,11 @@ func LoadFromEnv() Config {
 	if v := os.Getenv("SOLAS_OLLAMA_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.OllamaTimeout = d
+		}
+	}
+	if v := os.Getenv("SOLAS_OPENAI_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.OpenAITimeout = d
 		}
 	}
 	if v := os.Getenv("SOLAS_STARTUP_TIMEOUT"); v != "" {
@@ -72,10 +97,13 @@ func Validate(cfg Config) error {
 	if _, err := url.ParseRequestURI(cfg.Ollama.BaseURL); err != nil {
 		return fmt.Errorf("invalid ollama base url: %w", err)
 	}
+	if _, err := url.ParseRequestURI(cfg.OpenAI.BaseURL); err != nil {
+		return fmt.Errorf("invalid openai base url: %w", err)
+	}
 	if _, err := net.ResolveTCPAddr("tcp", cfg.ListenAddress); err != nil {
 		return fmt.Errorf("invalid listen address: %w", err)
 	}
-	if cfg.RequestTimeout <= 0 || cfg.OllamaTimeout <= 0 || cfg.StartupTimeout <= 0 {
+	if cfg.RequestTimeout <= 0 || cfg.OllamaTimeout <= 0 || cfg.OpenAITimeout <= 0 || cfg.StartupTimeout <= 0 {
 		return fmt.Errorf("timeouts must be greater than zero")
 	}
 	return nil

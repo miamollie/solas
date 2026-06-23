@@ -9,8 +9,8 @@ Track delivery progress from the current targeted implementation toward a robust
 ### Completed
 
 - [x] OpenAI-compatible chat endpoint support (including SSE streaming)
-- [ ] Request/token metrics foundation
-- [ ] Fix streaming issue
+- [ ] Request/token metrics foundation - capture user message vs system prompts
+- [x] Fix streaming issue
 - [x] Initial power package scaffolding in `internal/power`
 - [x] macOS `powermetrics` collector implementation
 - [x] Collector parsing tests (CPU/GPU watts and mW)

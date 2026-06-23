@@ -14,12 +14,12 @@ GET {{host}}/ready
 
 ###
 # List available models from Ollama
-GET {{host}}/v1/models
+GET {{host}}/openai/v1/models
 
 ###
 # Chat completion request (non-streaming)
 # Requires Ollama running on localhost:11434
-POST {{host}}/v1/chat/completions
+POST {{host}}/openai/v1/chat/completions
 Content-Type: application/json
 X-GreenOps-Client: {{client}}
 User-Agent: Continue/1.0
@@ -36,7 +36,7 @@ User-Agent: Continue/1.0
 
 ###
 # Chat completion with multiple messages
-POST {{host}}/v1/chat/completions
+POST {{host}}/openai/v1/chat/completions
 Content-Type: application/json
 X-GreenOps-Client: {{client}}
 
@@ -63,8 +63,8 @@ X-GreenOps-Client: {{client}}
 GET {{host}}/metrics
 
 ###
-# Test streaming rejection (should return 400)
-POST {{host}}/v1/chat/completions
+# OpenAI-compatible streaming
+POST {{host}}/openai/v1/chat/completions
 Content-Type: application/json
 
 {
@@ -80,7 +80,7 @@ Content-Type: application/json
 
 ###
 # Test with different client attribution
-POST {{host}}/v1/chat/completions
+POST {{host}}/openai/v1/chat/completions
 Content-Type: application/json
 X-GreenOps-Client: cline
 User-Agent: Cline/0.1.0
@@ -97,7 +97,7 @@ User-Agent: Cline/0.1.0
 
 ###
 # Test with open-webui client
-POST {{host}}/v1/chat/completions
+POST {{host}}/openai/v1/chat/completions
 Content-Type: application/json
 X-GreenOps-Client: open-webui
 User-Agent: Mozilla/5.0 (OpenWebUI)
@@ -110,4 +110,24 @@ User-Agent: Mozilla/5.0 (OpenWebUI)
       "content": "Request from Open WebUI"
     }
   ]
+}
+
+###
+# Ollama-native models endpoint
+GET {{host}}/ollama/api/tags
+
+###
+# Ollama-native chat endpoint
+POST {{host}}/ollama/api/chat
+Content-Type: application/json
+
+{
+  "model": "{{model}}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello from Ollama-native route"
+    }
+  ],
+  "stream": false
 }

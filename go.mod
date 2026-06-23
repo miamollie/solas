@@ -1,4 +1,4 @@
-module github.com/miamollie/greenops-local-llm
+module github.com/miamollie/solas
 
 go 1.24
 

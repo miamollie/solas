@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/miamollie/greenops-local-llm/internal/ollama"
+	"github.com/miamollie/solas/internal/llmclients"
 )
 
 func TestConsumeNDJSONReadsLinesAndStopsOnDone(t *testing.T) {
@@ -66,9 +66,9 @@ func TestOpenAIChunkEncoderEncodesFirstAndTerminalChunks(t *testing.T) {
 	now := time.Unix(100, 0)
 	enc := NewOpenAIChunkEncoder("qwen3:32b", now)
 
-	firstRaw, firstMeta, err := enc.Encode(ollama.ChatResponse{
+	firstRaw, firstMeta, err := enc.Encode(llmclients.StreamChunk{
 		Model: "",
-		Message: ollama.ChatMessage{
+		Message: llmclients.Message{
 			Role:    "assistant",
 			Content: "hel",
 		},
@@ -89,15 +89,15 @@ func TestOpenAIChunkEncoderEncodesFirstAndTerminalChunks(t *testing.T) {
 		t.Fatalf("unexpected object: %v", firstPayload["object"])
 	}
 
-	secondRaw, secondMeta, err := enc.Encode(ollama.ChatResponse{
+	secondRaw, secondMeta, err := enc.Encode(llmclients.StreamChunk{
 		Model: "qwen3:32b",
-		Message: ollama.ChatMessage{
+		Message: llmclients.Message{
 			Role:    "assistant",
 			Content: "lo",
 		},
-		Done:            true,
-		PromptEvalCount: 3,
-		EvalCount:       5,
+		Done:             true,
+		PromptTokens:     3,
+		CompletionTokens: 5,
 	})
 	if err != nil {
 		t.Fatalf("encode terminal chunk: %v", err)

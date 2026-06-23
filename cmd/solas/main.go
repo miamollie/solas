@@ -9,11 +9,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/miamollie/greenops-local-llm/internal/config"
-	"github.com/miamollie/greenops-local-llm/internal/logging"
-	"github.com/miamollie/greenops-local-llm/internal/metrics"
-	"github.com/miamollie/greenops-local-llm/internal/ollama"
-	"github.com/miamollie/greenops-local-llm/internal/server"
+	"github.com/miamollie/solas/internal/config"
+	"github.com/miamollie/solas/internal/llmclients"
+	"github.com/miamollie/solas/internal/logging"
+	"github.com/miamollie/solas/internal/metrics"
+	"github.com/miamollie/solas/internal/server"
 )
 
 func main() {
@@ -24,22 +24,34 @@ func main() {
 		return
 	}
 
-	httpClient := &http.Client{Timeout: cfg.OllamaTimeout}
-	ollamaClient, err := ollama.NewClient(cfg.Ollama.BaseURL, httpClient)
+	ollamaHTTPClient := &http.Client{Timeout: cfg.OllamaTimeout}
+	ollamaClient, err := llmclients.NewOllamaClient(cfg.Ollama.BaseURL, ollamaHTTPClient)
 	if err != nil {
 		logger.Error("invalid ollama configuration", "error", err)
 		return
 	}
 
+	openAIHTTPClient := &http.Client{Timeout: cfg.OpenAITimeout}
+	openAIClient, err := llmclients.NewOpenAIClient(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, openAIHTTPClient)
+	if err != nil {
+		logger.Error("invalid openai configuration", "error", err)
+		return
+	}
+
 	startupCtx, cancel := context.WithTimeout(context.Background(), cfg.StartupTimeout)
 	defer cancel()
-	if err := ollamaClient.IsReachable(startupCtx); err != nil {
-		logger.Error("startup readiness check failed", "error", err)
+	// todo remove readiness checks - or only check which client the user actually wants (read from CLI)
+	if err := ollamaClient.Ready(startupCtx); err != nil {
+		logger.Error("startup ollama readiness check failed", "error", err)
+		return
+	}
+	if err := openAIClient.Ready(startupCtx); err != nil {
+		logger.Error("startup openai readiness check failed", "error", err)
 		return
 	}
 
 	met := metrics.New()
-	srv := server.New(logger, ollamaClient, met)
+	srv := server.New(logger, openAIClient, ollamaClient, met)
 	handler := http.TimeoutHandler(srv.Handler(), cfg.RequestTimeout, `{"error":"request timeout"}`)
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddress,

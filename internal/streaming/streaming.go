@@ -10,8 +10,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/miamollie/greenops-local-llm/internal/ollama"
-	"github.com/miamollie/greenops-local-llm/internal/openai"
+	"github.com/miamollie/solas/internal/llmclients"
 )
 
 // ConsumeNDJSON reads newline-delimited JSON from r and invokes onLine for each JSON line.
@@ -63,15 +62,6 @@ func ConsumeNDJSON(ctx context.Context, r io.Reader, onLine func(line []byte) (d
 	}
 }
 
-// ParseOllamaChunk parses one NDJSON line into an Ollama chat response chunk.
-func ParseOllamaChunk(line []byte) (ollama.ChatResponse, error) {
-	var chunk ollama.ChatResponse
-	if err := json.Unmarshal(line, &chunk); err != nil {
-		return ollama.ChatResponse{}, err
-	}
-	return chunk, nil
-}
-
 // ChunkMeta carries terminal state extracted from a streamed chunk.
 type ChunkMeta struct {
 	Done             bool
@@ -97,14 +87,14 @@ func NewOpenAIChunkEncoder(model string, now time.Time) *OpenAIChunkEncoder {
 	}
 }
 
-// Encode marshals a single OpenAI chat.completion.chunk payload for the provided Ollama chunk.
-func (e *OpenAIChunkEncoder) Encode(chunk ollama.ChatResponse) ([]byte, ChunkMeta, error) {
+// Encode marshals a single OpenAI chat.completion.chunk payload for a provider-neutral chunk.
+func (e *OpenAIChunkEncoder) Encode(chunk llmclients.StreamChunk) ([]byte, ChunkMeta, error) {
 	respModel := chunk.Model
 	if respModel == "" {
 		respModel = e.model
 	}
 
-	delta := openai.ChatMessageDelta{Content: chunk.Message.Content}
+	delta := llmclients.OpenAIChatMessageDelta{Content: chunk.Message.Content}
 	if e.firstChunk {
 		delta.Role = "assistant"
 		if chunk.Message.Role != "" {
@@ -117,16 +107,16 @@ func (e *OpenAIChunkEncoder) Encode(chunk ollama.ChatResponse) ([]byte, ChunkMet
 	if chunk.Done {
 		reason := "stop"
 		finishReason = &reason
-		meta.PromptTokens = chunk.PromptEvalCount
-		meta.CompletionTokens = chunk.EvalCount
+		meta.PromptTokens = chunk.PromptTokens
+		meta.CompletionTokens = chunk.CompletionTokens
 	}
 
-	payload := openai.ChatCompletionChunkResponse{
+	payload := llmclients.OpenAIChatCompletionChunkResponse{
 		ID:      e.streamID,
 		Object:  "chat.completion.chunk",
 		Created: e.created,
 		Model:   respModel,
-		Choices: []openai.ChatCompletionChunkChoice{{
+		Choices: []llmclients.OpenAIChatCompletionChunkChoice{{
 			Index:        0,
 			Delta:        delta,
 			FinishReason: finishReason,
