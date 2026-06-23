@@ -1,4 +1,4 @@
-### greenopsd local testing
+### solas local testing
 ### Use with VS Code REST Client extension or similar HTTP client
 
 @host = http://127.0.0.1:8000

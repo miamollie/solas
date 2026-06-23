@@ -1,6 +1,6 @@
 # Configuration
 
-`greenopsd` uses sensible defaults and supports environment overrides.
+`solas` uses sensible defaults and supports environment overrides.
 
 ## Defaults
 
@@ -13,8 +13,8 @@ ollama:
 
 ## Environment Variables
 
-- `GREENOPSD_LISTEN_ADDRESS`
-- `GREENOPSD_OLLAMA_BASE_URL`
-- `GREENOPSD_REQUEST_TIMEOUT` (default `60s`)
-- `GREENOPSD_OLLAMA_TIMEOUT` (default `60s`)
-- `GREENOPSD_STARTUP_TIMEOUT` (default `10s`)
+- `SOLAS_LISTEN_ADDRESS`
+- `SOLAS_OLLAMA_BASE_URL`
+- `SOLAS_REQUEST_TIMEOUT` (default `60s`)
+- `SOLAS_OLLAMA_TIMEOUT` (default `60s`)
+- `SOLAS_STARTUP_TIMEOUT` (default `10s`)

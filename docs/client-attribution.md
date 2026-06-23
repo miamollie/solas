@@ -1,6 +1,6 @@
 # Client Attribution
 
-For each OpenAI-compatible request, greenopsd captures caller metadata:
+For each OpenAI-compatible request, solas captures caller metadata:
 
 - User-Agent (from HTTP header)
 - Remote IP (parsed from connection address)
@@ -8,7 +8,7 @@ For each OpenAI-compatible request, greenopsd captures caller metadata:
 
 These are exported via Prometheus as labels on:
 
-- `greenops_client_requests_total`
+- `solas_client_requests_total`
 
 Example values for `X-GreenOps-Client`:
 
