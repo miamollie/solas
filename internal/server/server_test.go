@@ -264,16 +264,16 @@ func TestRequestMetricIncremented(t *testing.T) {
 	metricsRR := httptest.NewRecorder()
 	s.Handler().ServeHTTP(metricsRR, metricsReq)
 
-	if !strings.Contains(metricsRR.Body.String(), `greenops_requests_total{model="qwen3:32b",status="`+strconv.Itoa(http.StatusOK)+`"} 1`) {
+	if !strings.Contains(metricsRR.Body.String(), `solas_requests_total{model="qwen3:32b",status="`+strconv.Itoa(http.StatusOK)+`"} 1`) {
 		t.Fatalf("expected request counter in metrics output, got: %s", metricsRR.Body.String())
 	}
-	if !strings.Contains(metricsRR.Body.String(), `greenops_request_duration_seconds_count{model="qwen3:32b"} 1`) {
+	if !strings.Contains(metricsRR.Body.String(), `solas_request_duration_seconds_count{model="qwen3:32b"} 1`) {
 		t.Fatalf("expected duration histogram count in metrics output, got: %s", metricsRR.Body.String())
 	}
-	if !strings.Contains(metricsRR.Body.String(), `greenops_prompt_tokens_total{model="qwen3:32b"} 4`) {
+	if !strings.Contains(metricsRR.Body.String(), `solas_prompt_tokens_total{model="qwen3:32b"} 4`) {
 		t.Fatalf("expected prompt token metric in metrics output, got: %s", metricsRR.Body.String())
 	}
-	if !strings.Contains(metricsRR.Body.String(), `greenops_completion_tokens_total{model="qwen3:32b"} 6`) {
+	if !strings.Contains(metricsRR.Body.String(), `solas_completion_tokens_total{model="qwen3:32b"} 6`) {
 		t.Fatalf("expected completion token metric in metrics output, got: %s", metricsRR.Body.String())
 	}
 }

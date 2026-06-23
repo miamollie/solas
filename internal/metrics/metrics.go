@@ -26,30 +26,30 @@ func New() *Metrics {
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	requests := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "greenops_requests_total",
-			Help: "Total number of OpenAI-compatible requests handled by greenopsd.",
+			Name: "solas_requests_total",
+			Help: "Total number of OpenAI-compatible requests handled by solas.",
 		},
 		[]string{"model", "status"},
 	)
 	duration := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "greenops_request_duration_seconds",
-			Help:    "Duration of OpenAI-compatible requests handled by greenopsd.",
+			Name:    "solas_request_duration_seconds",
+			Help:    "Duration of OpenAI-compatible requests handled by solas.",
 			Buckets: prometheus.DefBuckets,
 		},
 		[]string{"model"},
 	)
 	prompt := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "greenops_prompt_tokens_total",
-			Help: "Total prompt tokens processed by greenopsd.",
+			Name: "solas_prompt_tokens_total",
+			Help: "Total prompt tokens processed by solas.",
 		},
 		[]string{"model"},
 	)
 	output := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "greenops_completion_tokens_total",
-			Help: "Total completion tokens processed by greenopsd.",
+			Name: "solas_completion_tokens_total",
+			Help: "Total completion tokens processed by solas.",
 		},
 		[]string{"model"},
 	)

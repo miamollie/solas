@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"net/http"
 	"time"
 
 	"github.com/miamollie/greenops-local-llm/internal/config"
@@ -49,7 +49,7 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("starting greenopsd", "listen_address", cfg.ListenAddress)
+		logger.Info("starting solas", "listen_address", cfg.ListenAddress)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}

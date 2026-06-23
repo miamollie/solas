@@ -18,7 +18,7 @@ import (
 	"github.com/miamollie/greenops-local-llm/internal/streaming"
 )
 
-// Server provides HTTP handlers for greenopsd.
+// Server provides HTTP handlers for solas.
 type Server struct {
 	handler http.Handler
 	logger  *slog.Logger
@@ -111,6 +111,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	modelLabel := "unknown"
+	//note: how to seperate duration of just llm vs greenops service
 	defer func() {
 		s.metrics.ObserveDuration(modelLabel, time.Since(start))
 	}()

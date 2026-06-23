@@ -42,23 +42,23 @@ func LoadFromEnv() Config {
 		StartupTimeout: defaultStartupTimeout,
 	}
 
-	if v := os.Getenv("GREENOPSD_LISTEN_ADDRESS"); v != "" {
+	if v := os.Getenv("SOLAS_LISTEN_ADDRESS"); v != "" {
 		cfg.ListenAddress = v
 	}
-	if v := os.Getenv("GREENOPSD_OLLAMA_BASE_URL"); v != "" {
+	if v := os.Getenv("SOLAS_OLLAMA_BASE_URL"); v != "" {
 		cfg.Ollama.BaseURL = v
 	}
-	if v := os.Getenv("GREENOPSD_REQUEST_TIMEOUT"); v != "" {
+	if v := os.Getenv("SOLAS_REQUEST_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.RequestTimeout = d
 		}
 	}
-	if v := os.Getenv("GREENOPSD_OLLAMA_TIMEOUT"); v != "" {
+	if v := os.Getenv("SOLAS_OLLAMA_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.OllamaTimeout = d
 		}
 	}
-	if v := os.Getenv("GREENOPSD_STARTUP_TIMEOUT"); v != "" {
+	if v := os.Getenv("SOLAS_STARTUP_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.StartupTimeout = d
 		}
