@@ -37,6 +37,14 @@ func (c *captureModelClient) GetModels(_ context.Context) (any, error) {
 	return ollama.OllamaTagsResponse{}, nil
 }
 
+func (c *captureModelClient) GetVersion(_ context.Context) (any, error) {
+	return map[string]any{"version": "0.0.0"}, nil
+}
+
+func (c *captureModelClient) GetRunningModels(_ context.Context) (any, error) {
+	return map[string]any{"models": []any{}}, nil
+}
+
 func (c *captureModelClient) Chat(_ context.Context, reqBody chat.Request) (chat.Response, error) {
 	c.receivedModel = reqBody.Model
 	return chat.Response{Model: reqBody.Model, Message: chat.Message{Role: "assistant", Content: "ok"}}, nil
@@ -63,6 +71,20 @@ func (f fakeLLMClient) GetModels(_ context.Context) (any, error) {
 		return ollama.OllamaTagsResponse{}, nil
 	}
 	return f.modelsAny, nil
+}
+
+func (f fakeLLMClient) GetVersion(_ context.Context) (any, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return map[string]any{"version": "0.9.0"}, nil
+}
+
+func (f fakeLLMClient) GetRunningModels(_ context.Context) (any, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return map[string]any{"models": []any{map[string]any{"name": "qwen3:32b"}}}, nil
 }
 
 func (f fakeLLMClient) Chat(_ context.Context, reqBody chat.Request) (chat.Response, error) {
@@ -259,6 +281,47 @@ func TestOllamaTagsEndpoint(t *testing.T) {
 		t.Fatalf("failed to parse response: %v", err)
 	}
 	if len(payload.Models) != 1 || payload.Models[0].Name != "qwen3:32b" {
+		t.Fatalf("unexpected payload: %s", rr.Body.String())
+	}
+}
+
+func TestOllamaVersionEndpoint(t *testing.T) {
+	s := newTestServer(fakeLLMClient{})
+	req := httptest.NewRequest(http.MethodGet, "/ollama/api/version", nil)
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if payload["version"] != "0.9.0" {
+		t.Fatalf("unexpected payload: %s", rr.Body.String())
+	}
+}
+
+func TestOllamaPSEndpoint(t *testing.T) {
+	s := newTestServer(fakeLLMClient{})
+	req := httptest.NewRequest(http.MethodGet, "/ollama/api/ps", nil)
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	models, ok := payload["models"].([]any)
+	if !ok || len(models) != 1 {
 		t.Fatalf("unexpected payload: %s", rr.Body.String())
 	}
 }

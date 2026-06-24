@@ -20,6 +20,14 @@ import (
 )
 
 func main() {
+	if handled, exitCode := runCLI(os.Args[1:]); handled {
+		os.Exit(exitCode)
+	}
+
+	runServer()
+}
+
+func runServer() {
 	cfg := config.LoadFromEnv()
 	logger := logging.NewJSONLogger()
 	if err := config.Validate(cfg); err != nil {

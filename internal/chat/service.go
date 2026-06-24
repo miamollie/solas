@@ -55,6 +55,24 @@ func (s *Service) GetModels(ctx context.Context, provider Provider) (any, error)
 	return client.GetModels(ctx)
 }
 
+// GetVersion delegates to the underlying provider client version endpoint.
+func (s *Service) GetVersion(ctx context.Context, provider Provider) (any, error) {
+	client, err := s.client(provider)
+	if err != nil {
+		return nil, err
+	}
+	return client.GetVersion(ctx)
+}
+
+// GetRunningModels delegates to the underlying provider running-models endpoint.
+func (s *Service) GetRunningModels(ctx context.Context, provider Provider) (any, error) {
+	client, err := s.client(provider)
+	if err != nil {
+		return nil, err
+	}
+	return client.GetRunningModels(ctx)
+}
+
 // Run executes a non-streaming chat request and returns the response with an HTTP status code.
 func (s *Service) Run(ctx context.Context, provider Provider, req Request) (Response, int, error) {
 	client, err := s.client(provider)

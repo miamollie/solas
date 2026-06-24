@@ -41,6 +41,40 @@ func (s *Server) handleModels(provider chat.Provider) http.HandlerFunc {
 	}
 }
 
+func (s *Server) handleVersion(provider chat.Provider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		versionPayload, err := s.chat.GetVersion(r.Context(), provider)
+		if err != nil {
+			s.logger.Error("get version failed", "error", err, "provider", provider)
+			http.Error(w, "upstream error", http.StatusBadGateway)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(versionPayload); err != nil {
+			s.logger.Error("encode version failed", "error", err, "provider", provider)
+			http.Error(w, "upstream error", http.StatusBadGateway)
+		}
+	}
+}
+
+func (s *Server) handlePS(provider chat.Provider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		psPayload, err := s.chat.GetRunningModels(r.Context(), provider)
+		if err != nil {
+			s.logger.Error("get ps failed", "error", err, "provider", provider)
+			http.Error(w, "upstream error", http.StatusBadGateway)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(psPayload); err != nil {
+			s.logger.Error("encode ps failed", "error", err, "provider", provider)
+			http.Error(w, "upstream error", http.StatusBadGateway)
+		}
+	}
+}
+
 func (s *Server) handleChat(provider chat.Provider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

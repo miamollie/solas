@@ -1,76 +1,94 @@
-# How to run an LLM locally with GreenOps observability
+# Solas stack: Ollama on host + OpenWebUI + GreenOps Observabillity layer
 
-1. Install Ollama - use it on host, not from a docker container, so it can access your GPU (otherwies- [so many slow](https://chariotsolutions.com/blog/post/apple-silicon-gpus-docker-and-ollama-pick-two/) currently Docker on Mac does not see the GPU because of how virtualisation on Mac works )
-2. Add some models
-3. GreenOpsd using docker (default is to run on docker internal 8000)
-4. Open WebUI to have some chats, you will need to log in
+This stack runs:
 
-- Pull and run the Open WebUI docker container see [docs](https://docs.openwebui.com/getting-started/quick-start)
+- `solas` on `http://localhost:8000`
+- Open WebUI on `http://localhost:3000`
+- Prometheus on `http://localhost:9090`
+- Grafana on `http://localhost:3001`
 
-```
-docker run -d \
-  --name open-webui-solas \
-  -p 3000:8080 \
-  -e OPENAI_API_BASE_URL=http://host.docker.internal:8000/v1 \
-  -e OPENAI_API_KEY=solas \
-  -v open-webui:/app/backend/data \
-  ghcr.io/open-webui/open-webui:main
-```
+Ollama stays on your host machine so it can use your local GPU/accelerator.
 
- <!-- Optional debug step - ensure open-web-ui could read ollama directly first by ommitting the base url -->
- <!-- -v flag is the volume mount that persists chat data between runs -->
-<!-- Note - even though this is ollama, you need to ensure that your openWebUI uses the OpenAI connector - note to self, is there any point in this? -->
+## Prerequisites
 
-5. Run prometheus
-   (At this point, run it from the greenops route directory)
+1. Install and start Ollama on host.
+2. Pull at least one model in Ollama.
+3. Install Docker Desktop.
 
-```
-docker run -d \
-  --name prometheus \
-  -p 9090:9090 \
-  -v prometheus-data:/prometheus \
-  -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
-  prom/prometheus
+Quick check:
+
+```bash
+curl http://127.0.0.1:11434/api/tags
 ```
 
-6. Run grafana so you can see what's going on
-   [docs](https://grafana.com/docs/grafana/latest/?utm_source=grafana_gettingstarted)
+## Bring stack up
 
-```
-docker run -d \
-  --name grafana \
-  -p 3001:3000 \
-  -e GF_SECURITY_ADMIN_USER=admin \
-  -e GF_SECURITY_ADMIN_PASSWORD=admin \
-  -v grafana-data:/var/lib/grafana \
-  grafana/grafana:latest
+From repository root:
 
+```bash
+make stack-up
 ```
 
-- might need to configure it to look at the right endpoint (tbd: http://host.docker.internal:9090)
+or directly via CLI:
 
-### Now you've got
+```bash
+go build -o bin/solas ./cmd/solas
+./bin/solas up
+```
 
-                ┌──────────────────┐
-                │   Open WebUI     │
-                │ http://localhost │
-                └────────┬─────────┘
-                         │
-                         ▼
-            greenSolasLLMOps (your gateway)
-                         │
-                         ▼
-                     Ollama
+The `solas up` command checks that Ollama is reachable on host first, then runs Docker Compose from `solas-stack/docker-compose.yml`.
 
-                         ▲
-                         │
-                ┌────────┴────────┐
-                │    Grafana      │
-                │ localhost:3001  │
-                └──────────────────┘
+Use Open WebUI with:
 
-## Steps for VSCode connection
+- OpenAI base URL: `http://host.docker.internal:8000/v1`
+- API key: `solas`
 
-https://www.danielkliewer.com/blog/2024-12-19-continue.dev-ollama
+## Bring stack down
 
-Using for example Continue.dev, edit the config to point the LLM config at the exposed Solas port
+```bash
+make stack-down
+```
+
+or:
+
+```bash
+./bin/solas down
+```
+
+## Check status
+
+```bash
+make stack-status
+```
+
+or:
+
+```bash
+./bin/solas status
+```
+
+This shows Docker Compose service state and whether host Ollama is reachable.
+
+## View logs
+
+```bash
+make stack-logs
+```
+
+or:
+
+```bash
+./bin/solas logs
+```
+
+Useful variants:
+
+- Follow all logs: `./bin/solas logs -f`
+- One service: `./bin/solas logs -f solas`
+- Make target with args: `make stack-logs ARGS='-f open-webui'`
+
+## Notes
+
+- Grafana default credentials are `admin` / `admin`.
+- Prometheus is preconfigured to scrape Solas at `solas:8000` inside Docker network.
+- Running Ollama inside Docker on macOS is typically slower and does not use host GPU acceleration effectively.

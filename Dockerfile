@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
 
+# Build Image
 FROM golang:1.26 AS build
 WORKDIR /src
 
@@ -12,8 +13,10 @@ COPY . .
 # Compile binary for Linux AMD64 with CGO disabled to ensure a statically linked executable
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/solas ./cmd/solas
 
+# Test image
 FROM busybox:1.36.1-musl AS busybox
 
+# Final Image
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /
 COPY --from=build /out/solas /solas

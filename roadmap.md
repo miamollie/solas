@@ -9,7 +9,7 @@ Track delivery progress from the current targeted implementation toward a robust
 ### Completed
 
 - [x] OpenAI-compatible chat endpoint support (including SSE streaming)
-- [ ] Request/token metrics foundation - capture user message vs system prompts
+- [x] Request/token metrics foundation - capture user message vs system prompts
 - [x] Fix streaming issue
 - [x] Initial power package scaffolding in `internal/power`
 - [x] macOS `powermetrics` collector implementation
@@ -17,80 +17,12 @@ Track delivery progress from the current targeted implementation toward a robust
 
 ### In Progress
 
-- [ ] Continuous power sampling loop
-- [ ] Power metrics export (current watts + total joules)
+- [x] Continuous power sampling loop
+- [x] Power metrics export (current watts + total joules)
 - [ ] Request-window registry for attribution
 - [ ] Request energy attribution engine
 
-### Not Started
-
-- [ ] Process-level Ollama attribution
-- [ ] Model efficiency ranking outputs
-- [ ] Attribution confidence scoring
-
----
-
-## Target State (Milestone 1 MVP)
-
-Deliver machine-level energy approximation for local LLM usage, correlated by request windows.
-
-### MVP Questions to Answer
-
-- How much energy did local LLM usage consume today?
-- Which model consumed more energy?
-- What is estimated energy per request?
-- What is estimated energy per token?
-
-### MVP Deliverables
-
-- [ ] Current machine power (CPU/GPU/total)
-- [ ] Total machine energy counter (joules)
-- [ ] Estimated energy per request
-- [ ] Estimated energy per model
-- [ ] Tokens-per-joule and joules-per-token metrics
-
----
-
-## Execution Plan
-
-### 1) Sampling and Power Pipeline
-
-- [ ] Add a background sampler service in `internal/power`
-- [ ] Collect and buffer timestamped samples at fixed interval
-- [ ] Keep bounded in-memory history for attribution windows
-- [ ] Surface collector health and last error state
-
-### 2) Prometheus Metrics for Power and Energy
-
-- [ ] Add `solas_cpu_power_watts` gauge
-- [ ] Add `solas_gpu_power_watts` gauge
-- [ ] Add `solas_total_power_watts` gauge
-- [ ] Add `solas_energy_joules_total` counter
-- [ ] Add `solas_power_collection_available` gauge
-
-### 3) Request Window Tracking
-
-- [ ] Create `internal/attribution`
-- [ ] Record request start/end timestamps
-- [ ] Record endpoint/model/request ID
-- [ ] Record token usage per request
-- [ ] Add concurrency-safe registry and cleanup
-
-### 4) Attribution Engine (Window Correlation)
-
-- [ ] Correlate request windows with sampled power
-- [ ] Compute average power over each request window
-- [ ] Compute request energy in joules
-- [ ] Aggregate by model and endpoint
-
-### 5) Request Attribution Metrics
-
-- [ ] Add `solas_request_energy_joules_total`
-- [ ] Add `solas_request_tokens_total`
-- [ ] Add `solas_request_energy_joules` histogram
-- [ ] Add `solas_request_duration_seconds` histogram
-
-### 6) Dashboard and Docs
+### 6) Observability
 
 - [ ] Commit Grafana dashboard JSON
 - [ ] Add metrics reference docs
@@ -160,5 +92,6 @@ Current code is intentionally targeted. These improvements move it to a generic 
 
 - [ ] Users can query energy consumed over a time window
 - [ ] Users can compare energy by model
+- [ ] Users can see 
 - [ ] Users can view per-request energy and efficiency metrics
 - [ ] Metrics and dashboard are reproducible via documented setup

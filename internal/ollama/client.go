@@ -57,6 +57,52 @@ func (c *OllamaClient) GetModels(ctx context.Context) (any, error) {
 	return tags, nil
 }
 
+func (c *OllamaClient) GetVersion(ctx context.Context) (any, error) {
+	u := c.baseURL.JoinPath("/api/version")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func (c *OllamaClient) GetRunningModels(ctx context.Context) (any, error) {
+	u := c.baseURL.JoinPath("/api/ps")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
 func (c *OllamaClient) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {
 	payload := c.toPayload(req, false)
 	raw, err := json.Marshal(payload)

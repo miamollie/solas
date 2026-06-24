@@ -11,7 +11,7 @@ STARTUP_TIMEOUT ?= 10s
 
 DOCKER_IMAGE ?= solas
 
-.PHONY: help build run test tidy clean docker-build docker-run docker-run-local
+.PHONY: help build run test tidy clean docker-build docker-run docker-run-local stack-up stack-down stack-status stack-logs
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Available targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -47,3 +47,15 @@ docker-run-local: ## Run Docker image against host Ollama (macOS/Windows)
 	docker run --rm -p 8000:8000 \
 		-e SOLAS_OLLAMA_BASE_URL=http://host.docker.internal:11434 \
 		$(DOCKER_IMAGE)
+
+stack-up: build ## Bring up Solas + Prometheus + Grafana stack
+	./$(BIN_PATH) up
+
+stack-down: build ## Bring down Solas + Prometheus + Grafana stack
+	./$(BIN_PATH) down
+
+stack-status: build ## Show stack container status and host Ollama health
+	./$(BIN_PATH) status
+
+stack-logs: build ## Show stack logs (pass args via ARGS, e.g. ARGS='-f solas')
+	./$(BIN_PATH) logs $(ARGS)

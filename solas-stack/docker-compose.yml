@@ -1,0 +1,65 @@
+services:
+  solas:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: solas:local
+    ports:
+      - "8000:8000"
+    environment:
+      SOLAS_OLLAMA_BASE_URL: http://host.docker.internal:11434
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/busybox",
+          "sh",
+          "-c",
+          "/busybox wget -qO- http://127.0.0.1:8000/health >/dev/null && /busybox wget -qO- http://127.0.0.1:8000/ready >/dev/null",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    depends_on:
+      - solas
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.docker.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    depends_on:
+      - solas
+    ports:
+      - "3000:8080"
+    environment:
+      # use url within the docker network to speak directly to the container
+      OPENAI_API_BASE_URL: http://solas:8000/openai
+      OPENAI_API_KEY: solas
+      OLLAMA_BASE_URL: http://solas:8000/ollama
+    volumes:
+      - open-webui-data:/app/backend/data
+    labels:
+      solas.ui.url: "http://localhost:3000"
+
+volumes:
+  grafana-data:
+  prometheus-data:
+  open-webui-data:

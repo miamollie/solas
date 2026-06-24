@@ -15,6 +15,8 @@ import (
 	"github.com/miamollie/solas/internal/chat"
 )
 
+var errUnsupportedEndpoint = errors.New("endpoint not supported for openai provider")
+
 // Client talks directly to OpenAI-compatible HTTP APIs.
 type Client struct {
 	baseURL    *url.URL
@@ -60,6 +62,14 @@ func (c *Client) GetModels(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	return models, nil
+}
+
+func (c *Client) GetVersion(_ context.Context) (any, error) {
+	return nil, errUnsupportedEndpoint
+}
+
+func (c *Client) GetRunningModels(_ context.Context) (any, error) {
+	return nil, errUnsupportedEndpoint
 }
 
 func (c *Client) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {

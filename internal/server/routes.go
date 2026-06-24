@@ -22,6 +22,8 @@ func (s *Server) routes() http.Handler {
 		r.Route("/ollama/api", func(r chi.Router) {
 			provider := chat.ProviderOllama
 			r.Get("/tags", s.handleModels(provider))
+			r.Get("/version", s.handleVersion(provider))
+			r.Get("/ps", s.handlePS(provider))
 			r.Post("/chat", s.handleChat(provider))
 		})
 
