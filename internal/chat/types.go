@@ -1,34 +1,40 @@
-package llmclients
+package chat
 
 import (
 	"context"
 	"io"
 )
 
-// Message is a provider-neutral chat message.
+// Provider identifies an LLM backend.
+type Provider string
+
+const (
+	ProviderOllama Provider = "ollama"
+)
+
+// Message is an internal chat message.
 type Message struct {
 	Role    string
 	Content string
 }
 
-// ChatRequest is a provider-neutral chat request.
-type ChatRequest struct {
+// Request is an internal chat request.
+type Request struct {
 	Model    string
 	Messages []Message
 	Stream   bool
 }
 
-// ChatResponse is a provider-neutral non-streaming chat response.
-type ChatResponse struct {
+// Response is an internal non-streaming chat response.
+type Response struct {
 	Model            string
 	Message          Message
 	DoneReason       string
 	PromptTokens     int
 	CompletionTokens int
-	//TODO add userMessageTokens to highlight split between new messages and context
 }
 
-// StreamChunk is a provider-neutral streaming chunk.
+// StreamChunk is an internal streaming response chunk.
 type StreamChunk struct {
 	Model            string
 	Message          Message
@@ -38,11 +44,11 @@ type StreamChunk struct {
 	CompletionTokens int
 }
 
-// Client is the shared contract for LLM provider clients.
+// Client is the contract for an LLM provider.
 type Client interface {
 	Ready(ctx context.Context) error
 	GetModels(ctx context.Context) (any, error)
-	Chat(ctx context.Context, req ChatRequest) (ChatResponse, error)
-	StreamChat(ctx context.Context, req ChatRequest) (io.ReadCloser, error)
+	Chat(ctx context.Context, req Request) (Response, error)
+	StreamChat(ctx context.Context, req Request) (io.ReadCloser, error)
 	ParseStreamChunk(line []byte) (StreamChunk, error)
 }

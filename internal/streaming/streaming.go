@@ -4,13 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"time"
-
-	"github.com/miamollie/solas/internal/llmclients"
 )
 
 // ConsumeNDJSON reads newline-delimited JSON from r and invokes onLine for each JSON line.
@@ -62,72 +57,3 @@ func ConsumeNDJSON(ctx context.Context, r io.Reader, onLine func(line []byte) (d
 	}
 }
 
-// ChunkMeta carries terminal state extracted from a streamed chunk.
-type ChunkMeta struct {
-	Done             bool
-	PromptTokens     int
-	CompletionTokens int
-}
-
-// OpenAIChunkEncoder converts Ollama stream chunks into OpenAI-compatible chunk JSON payloads.
-type OpenAIChunkEncoder struct {
-	streamID   string
-	created    int64
-	model      string
-	firstChunk bool
-}
-
-// NewOpenAIChunkEncoder creates a chunk encoder for one chat-completion stream.
-func NewOpenAIChunkEncoder(model string, now time.Time) *OpenAIChunkEncoder {
-	return &OpenAIChunkEncoder{
-		streamID:   fmt.Sprintf("chatcmpl-%d", now.UnixNano()),
-		created:    now.Unix(),
-		model:      model,
-		firstChunk: true,
-	}
-}
-
-// Encode marshals a single OpenAI chat.completion.chunk payload for a provider-neutral chunk.
-func (e *OpenAIChunkEncoder) Encode(chunk llmclients.StreamChunk) ([]byte, ChunkMeta, error) {
-	respModel := chunk.Model
-	if respModel == "" {
-		respModel = e.model
-	}
-
-	delta := llmclients.OpenAIChatMessageDelta{Content: chunk.Message.Content}
-	if e.firstChunk {
-		delta.Role = "assistant"
-		if chunk.Message.Role != "" {
-			delta.Role = chunk.Message.Role
-		}
-	}
-
-	var finishReason *string
-	meta := ChunkMeta{Done: chunk.Done}
-	if chunk.Done {
-		reason := "stop"
-		finishReason = &reason
-		meta.PromptTokens = chunk.PromptTokens
-		meta.CompletionTokens = chunk.CompletionTokens
-	}
-
-	payload := llmclients.OpenAIChatCompletionChunkResponse{
-		ID:      e.streamID,
-		Object:  "chat.completion.chunk",
-		Created: e.created,
-		Model:   respModel,
-		Choices: []llmclients.OpenAIChatCompletionChunkChoice{{
-			Index:        0,
-			Delta:        delta,
-			FinishReason: finishReason,
-		}},
-	}
-
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return nil, ChunkMeta{}, err
-	}
-
-	e.firstChunk = false
-	return raw, meta, nil
-}

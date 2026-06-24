@@ -9,10 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/miamollie/solas/internal/chat"
 	"github.com/miamollie/solas/internal/config"
-	"github.com/miamollie/solas/internal/llmclients"
 	"github.com/miamollie/solas/internal/logging"
 	"github.com/miamollie/solas/internal/metrics"
+	"github.com/miamollie/solas/internal/ollama"
 	"github.com/miamollie/solas/internal/power"
 	"github.com/miamollie/solas/internal/server"
 )
@@ -26,21 +27,14 @@ func main() {
 	}
 
 	ollamaHTTPClient := &http.Client{Timeout: cfg.OllamaTimeout}
-	ollamaClient, err := llmclients.NewOllamaClient(cfg.Ollama.BaseURL, ollamaHTTPClient)
+	ollamaClient, err := ollama.New(cfg.Ollama.BaseURL, ollamaHTTPClient)
 	if err != nil {
 		logger.Error("invalid ollama configuration", "error", err)
 		return
 	}
 
-	openAIHTTPClient := &http.Client{Timeout: cfg.OpenAITimeout}
-	openAIClient, err := llmclients.NewOpenAIClient(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, openAIHTTPClient)
-	if err != nil {
-		logger.Error("invalid openai configuration", "error", err)
-		return
-	}
-
 	met := metrics.New()
-	srv := server.New(logger, openAIClient, ollamaClient, met)
+	srv := server.New(logger, map[chat.Provider]chat.Client{chat.ProviderOllama: ollamaClient}, met)
 	handler := http.TimeoutHandler(srv.Handler(), cfg.RequestTimeout, `{"error":"request timeout"}`)
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddress,
@@ -59,7 +53,6 @@ func main() {
 		cfg.PowerInterval,
 		map[string]string{
 			"ollama": cfg.Ollama.BaseURL,
-			"openai": cfg.OpenAI.BaseURL,
 		},
 	)
 	go profiler.Start(sigCtx)

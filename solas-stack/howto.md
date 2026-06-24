@@ -4,6 +4,7 @@
 2. Add some models
 3. GreenOpsd using docker (default is to run on docker internal 8000)
 4. Open WebUI to have some chats, you will need to log in
+
 - Pull and run the Open WebUI docker container see [docs](https://docs.openwebui.com/getting-started/quick-start)
 
 ```
@@ -15,12 +16,13 @@ docker run -d \
   -v open-webui:/app/backend/data \
   ghcr.io/open-webui/open-webui:main
 ```
+
  <!-- Optional debug step - ensure open-web-ui could read ollama directly first by ommitting the base url -->
  <!-- -v flag is the volume mount that persists chat data between runs -->
 <!-- Note - even though this is ollama, you need to ensure that your openWebUI uses the OpenAI connector - note to self, is there any point in this? -->
 
-5. Run prometheus 
-(At this point, run it from the greenops route directory)
+5. Run prometheus
+   (At this point, run it from the greenops route directory)
 
 ```
 docker run -d \
@@ -32,7 +34,7 @@ docker run -d \
 ```
 
 6. Run grafana so you can see what's going on
-[docs](https://grafana.com/docs/grafana/latest/?utm_source=grafana_gettingstarted)
+   [docs](https://grafana.com/docs/grafana/latest/?utm_source=grafana_gettingstarted)
 
 ```
 docker run -d \
@@ -44,6 +46,7 @@ docker run -d \
   grafana/grafana:latest
 
 ```
+
 - might need to configure it to look at the right endpoint (tbd: http://host.docker.internal:9090)
 
 ### Now you've got
@@ -65,3 +68,9 @@ docker run -d \
                 │    Grafana      │
                 │ localhost:3001  │
                 └──────────────────┘
+
+## Steps for VSCode connection
+
+https://www.danielkliewer.com/blog/2024-12-19-continue.dev-ollama
+
+Using for example Continue.dev, edit the config to point the LLM config at the exposed Solas port
