@@ -10,6 +10,7 @@ type Provider string
 
 const (
 	ProviderOllama Provider = "ollama"
+	ProviderOpenAI Provider = "openai"
 )
 
 // Message is an internal chat message.

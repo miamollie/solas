@@ -34,7 +34,10 @@ func (s *Server) handleModels(provider chat.Provider) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(modelsPayload)
+		if err := chat.EncodeModels(provider, w, modelsPayload); err != nil {
+			s.logger.Error("encode models failed", "error", err, "provider", provider)
+			http.Error(w, "upstream error", http.StatusBadGateway)
+		}
 	}
 }
 

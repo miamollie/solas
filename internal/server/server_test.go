@@ -117,7 +117,10 @@ func (f fakeLLMClient) ParseStreamChunk(line []byte) (chat.StreamChunk, error) {
 
 func newTestServer(client chat.Client) *Server {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return New(logger, map[chat.Provider]chat.Client{chat.ProviderOllama: client}, metrics.New())
+	return New(logger, map[chat.Provider]chat.Client{
+		chat.ProviderOllama: client,
+		chat.ProviderOpenAI: client,
+	}, metrics.New())
 }
 
 func TestHealthEndpoint(t *testing.T) {
@@ -282,5 +285,91 @@ func TestOllamaChatEndpoint(t *testing.T) {
 	}
 	if payload.Model != "qwen3:32b" || payload.PromptEvalCount != 4 || payload.EvalCount != 6 {
 		t.Fatalf("unexpected response payload: %s", rr.Body.String())
+	}
+}
+
+func TestOpenAIModelsEndpoint(t *testing.T) {
+	s := newTestServer(fakeLLMClient{modelsAny: ollama.OllamaTagsResponse{Models: []ollama.OllamaTagModel{{Name: "qwen3:32b"}}}})
+	req := httptest.NewRequest(http.MethodGet, "/openai/v1/models", nil)
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var payload chat.OpenAIModelsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if payload.Object != "list" || len(payload.Data) != 1 || payload.Data[0].ID != "qwen3:32b" {
+		t.Fatalf("unexpected payload: %s", rr.Body.String())
+	}
+}
+
+func TestOpenAIChatEndpoint(t *testing.T) {
+	s := newTestServer(fakeLLMClient{chatResp: chat.Response{
+		Model:            "qwen3:32b",
+		Message:          chat.Message{Role: "assistant", Content: "hi there"},
+		PromptTokens:     4,
+		CompletionTokens: 6,
+	}})
+	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload chat.OpenAIChatCompletionsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Model != "qwen3:32b" || len(payload.Choices) != 1 || payload.Usage.TotalTokens != 10 {
+		t.Fatalf("unexpected response payload: %s", rr.Body.String())
+	}
+}
+
+func TestOpenAIChatStreamingEndpoint(t *testing.T) {
+	s := newTestServer(fakeLLMClient{stream: []chat.StreamChunk{
+		{Model: "qwen3:32b", Message: chat.Message{Role: "assistant", Content: "hel"}, Done: false},
+		{Model: "qwen3:32b", Message: chat.Message{Role: "assistant", Content: "lo"}, Done: true, PromptTokens: 3, CompletionTokens: 5},
+	}})
+	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Content-Type"); !strings.Contains(got, "text/event-stream") {
+		t.Fatalf("expected text/event-stream content type, got %q", got)
+	}
+	bodyText := rr.Body.String()
+	if !strings.Contains(bodyText, `"object":"chat.completion.chunk"`) {
+		t.Fatalf("expected chunk payload, got %s", bodyText)
+	}
+	if !strings.Contains(bodyText, `"content":"hel"`) || !strings.Contains(bodyText, `"content":"lo"`) {
+		t.Fatalf("expected streamed content, got %s", bodyText)
+	}
+	if !strings.Contains(bodyText, "data: [DONE]") {
+		t.Fatalf("expected done sentinel, got %s", bodyText)
+	}
+}
+
+func TestOpenAILegacyV1ModelsEndpoint(t *testing.T) {
+	s := newTestServer(fakeLLMClient{modelsAny: ollama.OllamaTagsResponse{Models: []ollama.OllamaTagModel{{Name: "qwen3:32b"}}}})
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
 }

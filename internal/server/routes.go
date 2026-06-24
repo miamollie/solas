@@ -24,6 +24,18 @@ func (s *Server) routes() http.Handler {
 			r.Get("/tags", s.handleModels(provider))
 			r.Post("/chat", s.handleChat(provider))
 		})
+
+		r.Route("/openai/v1", func(r chi.Router) {
+			provider := chat.ProviderOpenAI
+			r.Get("/models", s.handleModels(provider))
+			r.Post("/chat/completions", s.handleChat(provider))
+		})
+
+		r.Route("/v1", func(r chi.Router) {
+			provider := chat.ProviderOpenAI
+			r.Get("/models", s.handleModels(provider))
+			r.Post("/chat/completions", s.handleChat(provider))
+		})
 	})
 
 	return r
