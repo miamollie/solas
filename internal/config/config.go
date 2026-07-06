@@ -12,6 +12,7 @@ const (
 	defaultListenAddress  = ":8000"
 	defaultOllamaBaseURL  = "http://127.0.0.1:11434"
 	defaultOpenAIBaseURL  = "https://api.openai.com"
+	defaultProcessMode    = "device"
 	defaultRequestTimeout = 60 * time.Second
 	defaultOllamaTimeout  = 60 * time.Second
 	defaultOpenAITimeout  = 60 * time.Second
@@ -24,6 +25,7 @@ type Config struct {
 	ListenAddress  string
 	Ollama         OllamaConfig
 	OpenAI         OpenAIConfig
+	ProcessMode    string
 	RequestTimeout time.Duration
 	OllamaTimeout  time.Duration
 	OpenAITimeout  time.Duration
@@ -33,7 +35,8 @@ type Config struct {
 
 // OllamaConfig stores upstream Ollama settings.
 type OllamaConfig struct {
-	BaseURL string
+	BaseURL       string
+	ContainerName string
 }
 
 // OpenAIConfig stores upstream OpenAI settings.
@@ -52,6 +55,7 @@ func LoadFromEnv() Config {
 		OpenAI: OpenAIConfig{
 			BaseURL: defaultOpenAIBaseURL,
 		},
+		ProcessMode:    defaultProcessMode,
 		RequestTimeout: defaultRequestTimeout,
 		OllamaTimeout:  defaultOllamaTimeout,
 		OpenAITimeout:  defaultOpenAITimeout,
@@ -65,8 +69,14 @@ func LoadFromEnv() Config {
 	if v := os.Getenv("SOLAS_OLLAMA_BASE_URL"); v != "" {
 		cfg.Ollama.BaseURL = v
 	}
+	if v := os.Getenv("SOLAS_OLLAMA_CONTAINER_NAME"); v != "" {
+		cfg.Ollama.ContainerName = v
+	}
 	if v := os.Getenv("SOLAS_OPENAI_BASE_URL"); v != "" {
 		cfg.OpenAI.BaseURL = v
+	}
+	if v := os.Getenv("SOLAS_PROCESS_PROFILE_MODE"); v != "" {
+		cfg.ProcessMode = v
 	}
 	if v := os.Getenv("SOLAS_OPENAI_API_KEY"); v != "" {
 		cfg.OpenAI.APIKey = v
@@ -110,6 +120,9 @@ func Validate(cfg Config) error {
 	}
 	if _, err := net.ResolveTCPAddr("tcp", cfg.ListenAddress); err != nil {
 		return fmt.Errorf("invalid listen address: %w", err)
+	}
+	if cfg.ProcessMode != "device" && cfg.ProcessMode != "container" {
+		return fmt.Errorf("invalid process profile mode %q: must be device or container", cfg.ProcessMode)
 	}
 	if cfg.RequestTimeout <= 0 || cfg.OllamaTimeout <= 0 || cfg.OpenAITimeout <= 0 || cfg.StartupTimeout <= 0 || cfg.PowerInterval <= 0 {
 		return fmt.Errorf("timeouts must be greater than zero")

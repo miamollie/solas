@@ -65,13 +65,17 @@ func runServer() {
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	profiler := power.NewProfiler(
+	profiler := power.NewProfilerWithMode(
 		power.NewMacOSCollector(),
 		met,
 		logger,
 		cfg.PowerInterval,
 		map[string]string{
 			"ollama": cfg.Ollama.BaseURL,
+		},
+		cfg.ProcessMode,
+		map[string]string{
+			"ollama": cfg.Ollama.ContainerName,
 		},
 	)
 	go profiler.Start(sigCtx)

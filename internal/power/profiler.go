@@ -2,12 +2,14 @@ package power
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/url"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -15,33 +17,59 @@ import (
 	"github.com/miamollie/solas/internal/metrics"
 )
 
+const (
+	ProcessModeDevice    = "device"
+	ProcessModeContainer = "container"
+)
+
+var sizePattern = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z]+)$`)
+
+type commandOutputFunc func(ctx context.Context, name string, args ...string) ([]byte, error)
+
 // Profiler periodically samples host power and local upstream process stats.
 type Profiler struct {
 	collector           Collector
 	metrics             *metrics.Metrics
 	logger              *slog.Logger
 	interval            time.Duration
+	mode                string
 	providers           map[string]string
+	providerContainers  map[string]string
 	pidCache            map[string]int
 	lastProcessSampleAt map[string]time.Time
+	commandOutput       commandOutputFunc
 }
 
 // NewProfiler creates a background power profiler.
 func NewProfiler(collector Collector, met *metrics.Metrics, logger *slog.Logger, interval time.Duration, providers map[string]string) *Profiler {
+	return NewProfilerWithMode(collector, met, logger, interval, providers, ProcessModeDevice, nil)
+}
+
+// NewProfilerWithMode creates a background power profiler with process sampling mode.
+func NewProfilerWithMode(collector Collector, met *metrics.Metrics, logger *slog.Logger, interval time.Duration, providers map[string]string, mode string, providerContainers map[string]string) *Profiler {
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}
 	if providers == nil {
 		providers = map[string]string{}
 	}
+	if providerContainers == nil {
+		providerContainers = map[string]string{}
+	}
+	if mode != ProcessModeContainer {
+		mode = ProcessModeDevice
+	}
 	return &Profiler{
 		collector:           collector,
 		metrics:             met,
 		logger:              logger,
 		interval:            interval,
+		mode:                mode,
 		providers:           providers,
+		providerContainers:  providerContainers,
 		pidCache:            map[string]int{},
 		lastProcessSampleAt: map[string]time.Time{},
+		commandOutput:       runCommandOutput,
 	}
 }
 
@@ -86,33 +114,60 @@ func (p *Profiler) sampleOnce(ctx context.Context) {
 		if !p.shouldSampleProcess(provider, now) {
 			continue
 		}
-
-		pid := p.pidCache[provider]
-		if pid <= 0 {
-			pidCtx, cancelPID := context.WithTimeout(ctx, 1500*time.Millisecond)
-			resolvedPID, pidErr := resolveListeningPID(pidCtx, baseURL)
-			cancelPID()
-			if pidErr != nil || resolvedPID <= 0 {
-				p.pidCache[provider] = 0
-				p.lastProcessSampleAt[provider] = now
-				p.metrics.SetLLMProcessMetrics(provider, 0, 0, 0)
-				continue
-			}
-			pid = resolvedPID
-			p.pidCache[provider] = pid
-		}
-
-		statsCtx, cancelStats := context.WithTimeout(ctx, 1500*time.Millisecond)
-		cpuPercent, rssBytes, statsErr := sampleProcessStats(statsCtx, pid)
-		cancelStats()
 		p.lastProcessSampleAt[provider] = now
-		if statsErr != nil {
-			p.pidCache[provider] = 0
-			p.metrics.SetLLMProcessMetrics(provider, pid, 0, 0)
+
+		if p.mode == ProcessModeContainer {
+			p.sampleContainerProcess(ctx, provider, baseURL)
 			continue
 		}
-		p.metrics.SetLLMProcessMetrics(provider, pid, cpuPercent, rssBytes)
+
+		p.sampleHostProcess(ctx, provider, baseURL)
 	}
+}
+
+func (p *Profiler) sampleHostProcess(ctx context.Context, provider, baseURL string) {
+	pid := p.pidCache[provider]
+	if pid <= 0 {
+		pidCtx, cancelPID := context.WithTimeout(ctx, 1500*time.Millisecond)
+		resolvedPID, pidErr := resolveListeningPID(pidCtx, baseURL)
+		cancelPID()
+		if pidErr != nil || resolvedPID <= 0 {
+			p.pidCache[provider] = 0
+			p.metrics.SetLLMProcessMetrics(provider, 0, 0, 0)
+			return
+		}
+		pid = resolvedPID
+		p.pidCache[provider] = pid
+	}
+
+	statsCtx, cancelStats := context.WithTimeout(ctx, 1500*time.Millisecond)
+	cpuPercent, rssBytes, statsErr := sampleProcessStats(statsCtx, pid)
+	cancelStats()
+	if statsErr != nil {
+		p.pidCache[provider] = 0
+		p.metrics.SetLLMProcessMetrics(provider, pid, 0, 0)
+		return
+	}
+	p.metrics.SetLLMProcessMetrics(provider, pid, cpuPercent, rssBytes)
+}
+
+func (p *Profiler) sampleContainerProcess(ctx context.Context, provider, baseURL string) {
+	containerName := p.providerContainers[provider]
+	if containerName == "" {
+		containerName = inferContainerFromBaseURL(baseURL)
+	}
+	if containerName == "" {
+		p.metrics.SetLLMProcessMetrics(provider, 0, 0, 0)
+		return
+	}
+	statsCtx, cancelStats := context.WithTimeout(ctx, 1500*time.Millisecond)
+	cpuPercent, rssBytes, statsErr := sampleContainerStats(statsCtx, containerName, p.commandOutput)
+	cancelStats()
+	if statsErr != nil {
+		p.metrics.SetLLMProcessMetrics(provider, 0, 0, 0)
+		return
+	}
+	p.metrics.SetLLMProcessMetrics(provider, 0, cpuPercent, rssBytes)
 }
 
 func (p *Profiler) shouldSampleProcess(provider string, now time.Time) bool {
@@ -209,6 +264,123 @@ func parsePSStatsOutput(out string) (float64, float64, error) {
 		return 0, 0, fmt.Errorf("parse process rss: %w", err)
 	}
 	return cpuPercent, rssKB * 1024, nil
+}
+
+func sampleContainerStats(ctx context.Context, containerName string, run commandOutputFunc) (float64, float64, error) {
+	if strings.TrimSpace(containerName) == "" {
+		return 0, 0, errors.New("container name is required")
+	}
+	if run == nil {
+		run = runCommandOutput
+	}
+	out, err := run(ctx, "docker", "stats", "--no-stream", "--format", "json", containerName)
+	if err != nil {
+		return 0, 0, fmt.Errorf("sample container stats: %w", err)
+	}
+	return parseDockerStatsJSON(strings.TrimSpace(string(out)))
+}
+
+func parseDockerStatsJSON(out string) (float64, float64, error) {
+	if out == "" {
+		return 0, 0, errors.New("empty docker stats output")
+	}
+	lines := strings.Split(out, "\n")
+	line := strings.TrimSpace(lines[0])
+	if line == "" {
+		return 0, 0, errors.New("empty docker stats output")
+	}
+
+	var payload struct {
+		CPUPerc  string
+		MemUsage string
+	}
+	if err := json.Unmarshal([]byte(line), &payload); err != nil {
+		return 0, 0, fmt.Errorf("parse docker stats json: %w", err)
+	}
+	cpuPercent, err := parsePercent(payload.CPUPerc)
+	if err != nil {
+		return 0, 0, err
+	}
+	rssBytes, err := parseMemUsage(payload.MemUsage)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cpuPercent, rssBytes, nil
+}
+
+func parsePercent(v string) (float64, error) {
+	trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "%"))
+	if trimmed == "" {
+		return 0, errors.New("missing percent value")
+	}
+	parsed, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse percent: %w", err)
+	}
+	return parsed, nil
+}
+
+func parseMemUsage(v string) (float64, error) {
+	parts := strings.Split(v, "/")
+	if len(parts) == 0 {
+		return 0, errors.New("missing memory usage")
+	}
+	return parseByteSize(parts[0])
+}
+
+func parseByteSize(v string) (float64, error) {
+	trimmed := strings.TrimSpace(v)
+	if trimmed == "" {
+		return 0, errors.New("missing byte size")
+	}
+	matches := sizePattern.FindStringSubmatch(trimmed)
+	if len(matches) != 3 {
+		return 0, fmt.Errorf("unrecognized byte size %q", v)
+	}
+	value, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse size value: %w", err)
+	}
+	unit := strings.ToLower(matches[2])
+	multipliers := map[string]float64{
+		"b":   1,
+		"kb":  1000,
+		"mb":  1000 * 1000,
+		"gb":  1000 * 1000 * 1000,
+		"tb":  1000 * 1000 * 1000 * 1000,
+		"kib": 1024,
+		"mib": 1024 * 1024,
+		"gib": 1024 * 1024 * 1024,
+		"tib": 1024 * 1024 * 1024 * 1024,
+	}
+	multiplier, ok := multipliers[unit]
+	if !ok {
+		return 0, fmt.Errorf("unsupported byte size unit %q", unit)
+	}
+	return value * multiplier, nil
+}
+
+func inferContainerFromBaseURL(baseURL string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+	host := strings.TrimSpace(u.Hostname())
+	if host == "" || strings.EqualFold(host, "localhost") {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsLoopback() {
+			return ""
+		}
+		return ""
+	}
+	return host
+}
+
+func runCommandOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	return cmd.Output()
 }
 
 func isLocalHost(host string) bool {

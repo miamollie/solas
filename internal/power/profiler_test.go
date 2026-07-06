@@ -76,3 +76,50 @@ func TestShouldSampleProcessIdleBackoff(t *testing.T) {
 		t.Fatalf("expected idle provider sampling after backoff interval")
 	}
 }
+
+func TestNewProfilerWithModeDefaultsToDevice(t *testing.T) {
+	p := NewProfilerWithMode(nil, metrics.New(), nil, 5*time.Second, nil, "invalid", nil)
+	if p.mode != ProcessModeDevice {
+		t.Fatalf("expected invalid mode to default to device, got %q", p.mode)
+	}
+}
+
+func TestParseDockerStatsJSON(t *testing.T) {
+	out := `{"CPUPerc":"2.91%","MemUsage":"46.79MiB / 7.75GiB"}`
+	cpu, rss, err := parseDockerStatsJSON(out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cpu != 2.91 {
+		t.Fatalf("expected cpu 2.91, got %v", cpu)
+	}
+	if rss <= 0 {
+		t.Fatalf("expected positive rss bytes, got %v", rss)
+	}
+}
+
+func TestParseDockerStatsJSONInvalid(t *testing.T) {
+	_, _, err := parseDockerStatsJSON("not-json")
+	if err == nil {
+		t.Fatalf("expected parse error")
+	}
+}
+
+func TestParseByteSize(t *testing.T) {
+	v, err := parseByteSize("1.5GiB")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v != 1.5*1024*1024*1024 {
+		t.Fatalf("unexpected byte size conversion %v", v)
+	}
+}
+
+func TestInferContainerFromBaseURL(t *testing.T) {
+	if got := inferContainerFromBaseURL("http://ollama:11434"); got != "ollama" {
+		t.Fatalf("expected inferred container name ollama, got %q", got)
+	}
+	if got := inferContainerFromBaseURL("http://127.0.0.1:11434"); got != "" {
+		t.Fatalf("expected empty inferred container for loopback, got %q", got)
+	}
+}

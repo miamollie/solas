@@ -15,6 +15,8 @@ ollama:
 
 - `SOLAS_LISTEN_ADDRESS`
 - `SOLAS_OLLAMA_BASE_URL`
+- `SOLAS_PROCESS_PROFILE_MODE` (default `device`, valid: `device`, `container`)
+- `SOLAS_OLLAMA_CONTAINER_NAME` (optional, used when process mode is `container`)
 - `SOLAS_REQUEST_TIMEOUT` (default `60s`)
 - `SOLAS_OLLAMA_TIMEOUT` (default `60s`)
 - `SOLAS_STARTUP_TIMEOUT` (default `10s`)

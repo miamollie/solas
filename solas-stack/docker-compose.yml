@@ -8,6 +8,10 @@ services:
       - "8000:8000"
     environment:
       SOLAS_OLLAMA_BASE_URL: http://host.docker.internal:11434
+      SOLAS_PROCESS_PROFILE_MODE: device
+      # If ollama runs as a container on the same Docker network, use:
+      # SOLAS_PROCESS_PROFILE_MODE: container
+      # SOLAS_OLLAMA_CONTAINER_NAME: ollama
     healthcheck:
       test:
         [
