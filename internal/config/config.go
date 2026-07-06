@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -76,7 +77,7 @@ func LoadFromEnv() Config {
 		cfg.OpenAI.BaseURL = v
 	}
 	if v := os.Getenv("SOLAS_PROCESS_PROFILE_MODE"); v != "" {
-		cfg.ProcessMode = v
+		cfg.ProcessMode = normalizeProcessMode(v)
 	}
 	if v := os.Getenv("SOLAS_OPENAI_API_KEY"); v != "" {
 		cfg.OpenAI.APIKey = v
@@ -121,11 +122,24 @@ func Validate(cfg Config) error {
 	if _, err := net.ResolveTCPAddr("tcp", cfg.ListenAddress); err != nil {
 		return fmt.Errorf("invalid listen address: %w", err)
 	}
-	if cfg.ProcessMode != "device" && cfg.ProcessMode != "container" {
+	if !isValidProcessMode(cfg.ProcessMode) {
 		return fmt.Errorf("invalid process profile mode %q: must be device or container", cfg.ProcessMode)
 	}
 	if cfg.RequestTimeout <= 0 || cfg.OllamaTimeout <= 0 || cfg.OpenAITimeout <= 0 || cfg.StartupTimeout <= 0 || cfg.PowerInterval <= 0 {
 		return fmt.Errorf("timeouts must be greater than zero")
 	}
 	return nil
+}
+
+func normalizeProcessMode(v string) string {
+	mode := strings.ToLower(strings.TrimSpace(v))
+	if mode == "host" {
+		return "device"
+	}
+	return mode
+}
+
+func isValidProcessMode(v string) bool {
+	mode := normalizeProcessMode(v)
+	return mode == "device" || mode == "container"
 }

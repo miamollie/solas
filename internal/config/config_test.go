@@ -43,7 +43,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	t.Setenv("SOLAS_OLLAMA_CONTAINER_NAME", "solas-ollama-1")
 	t.Setenv("SOLAS_OPENAI_BASE_URL", "http://openai-proxy:8080")
 	t.Setenv("SOLAS_OPENAI_API_KEY", "test-key")
-	t.Setenv("SOLAS_PROCESS_PROFILE_MODE", "container")
+	t.Setenv("SOLAS_PROCESS_PROFILE_MODE", " host ")
 	t.Setenv("SOLAS_REQUEST_TIMEOUT", "30s")
 	t.Setenv("SOLAS_OLLAMA_TIMEOUT", "15s")
 	t.Setenv("SOLAS_OPENAI_TIMEOUT", "12s")
@@ -63,7 +63,7 @@ func TestLoadFromEnvOverrides(t *testing.T) {
 	if cfg.OpenAI.BaseURL != "http://openai-proxy:8080" {
 		t.Fatalf("expected overridden openai url, got %q", cfg.OpenAI.BaseURL)
 	}
-	if cfg.ProcessMode != "container" {
+	if cfg.ProcessMode != "device" {
 		t.Fatalf("expected overridden process mode, got %q", cfg.ProcessMode)
 	}
 	if cfg.OpenAI.APIKey != "test-key" {
@@ -90,6 +90,11 @@ func TestValidateFailsForInvalidListenAddress(t *testing.T) {
 
 func TestValidateFailsForInvalidProcessMode(t *testing.T) {
 	err := Validate(Config{ListenAddress: ":8000", Ollama: OllamaConfig{BaseURL: "http://127.0.0.1:11434"}, OpenAI: OpenAIConfig{BaseURL: "https://api.openai.com"}, ProcessMode: "host", RequestTimeout: time.Second, OllamaTimeout: time.Second, OpenAITimeout: time.Second, StartupTimeout: time.Second, PowerInterval: time.Second})
+	if err != nil {
+		t.Fatalf("expected host alias to be accepted, got %v", err)
+	}
+
+	err = Validate(Config{ListenAddress: ":8000", Ollama: OllamaConfig{BaseURL: "http://127.0.0.1:11434"}, OpenAI: OpenAIConfig{BaseURL: "https://api.openai.com"}, ProcessMode: "something-else", RequestTimeout: time.Second, OllamaTimeout: time.Second, OpenAITimeout: time.Second, StartupTimeout: time.Second, PowerInterval: time.Second})
 	if err == nil {
 		t.Fatalf("expected validation error for invalid process mode")
 	}
