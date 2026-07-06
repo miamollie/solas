@@ -2,8 +2,9 @@ package chat
 
 // OpenAIModelsResponse is /v1/models compatible payload.
 type OpenAIModelsResponse struct {
-	Object string            `json:"object"`
-	Data   []OpenAIModelData `json:"data"`
+	Object  string            `json:"object"`
+	Data    []OpenAIModelData `json:"data"`
+	OwnedBy string            `json:"owned_by"`
 }
 
 // OpenAIModelData represents one model entry.

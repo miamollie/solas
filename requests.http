@@ -1,7 +1,9 @@
 ### solas local testing
 ### Use with VS Code REST Client extension or similar HTTP client
 
-@host = http://127.0.0.1:8000
+@host = http://127.0.0.1:8000 
+# @docker_host = http://solas:8000
+# @host = {{docker_host}} # Use this when testing from within the Docker network (e.g. from open-webui container)
 @client = continue
 @model = qwen3:32b
 
@@ -14,12 +16,12 @@ GET {{host}}/ready
 
 ###
 # List available models from Ollama
-GET {{host}}/openai/v1/models
+GET {{host}}/v1/models
 
 ###
 # Chat completion request (non-streaming)
 # Requires Ollama running on localhost:11434
-POST {{host}}/openai/v1/chat/completions
+POST {{host}}/v1/chat/completions
 Content-Type: application/json
 X-GreenOps-Client: {{client}}
 User-Agent: Continue/1.0
@@ -36,7 +38,7 @@ User-Agent: Continue/1.0
 
 ###
 # Chat completion with multiple messages
-POST {{host}}/openai/v1/chat/completions
+POST {{host}}/v1/chat/completions
 Content-Type: application/json
 X-GreenOps-Client: {{client}}
 
@@ -64,7 +66,7 @@ GET {{host}}/metrics
 
 ###
 # OpenAI-compatible streaming
-POST {{host}}/openai/v1/chat/completions
+POST {{host}}/v1/chat/completions
 Content-Type: application/json
 
 {
@@ -80,7 +82,7 @@ Content-Type: application/json
 
 ###
 # Test with different client attribution
-POST {{host}}/openai/v1/chat/completions
+POST {{host}}/v1/chat/completions
 Content-Type: application/json
 X-GreenOps-Client: cline
 User-Agent: Cline/0.1.0
@@ -97,7 +99,7 @@ User-Agent: Cline/0.1.0
 
 ###
 # Test with open-webui client
-POST {{host}}/openai/v1/chat/completions
+POST {{host}}/v1/chat/completions
 Content-Type: application/json
 X-GreenOps-Client: open-webui
 User-Agent: Mozilla/5.0 (OpenWebUI)
@@ -127,6 +129,54 @@ Content-Type: application/json
     {
       "role": "user",
       "content": "Hello from Ollama-native route"
+    }
+  ],
+  "stream": false
+}
+
+###
+# -------------------------------
+# Ollama debug routes
+# -------------------------------
+
+### Ollama debug: runtime version (proxied)
+GET {{host}}/ollama/api/version
+
+###
+# Ollama debug: running models/process state (proxied)
+GET {{host}}/ollama/api/ps
+
+###
+# Ollama debug: tags (model inventory)
+GET {{host}}/ollama/api/tags
+
+###
+# Ollama debug: chat streaming NDJSON
+POST {{host}}/ollama/api/chat
+Content-Type: application/json
+
+{
+  "model": "{{model}}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Stream a short response in exactly 5 words"
+    }
+  ],
+  "stream": true
+}
+
+###
+# Ollama debug: upstream error behavior (non-existent model)
+POST {{host}}/ollama/api/chat
+Content-Type: application/json
+
+{
+  "model": "does-not-exist:latest",
+  "messages": [
+    {
+      "role": "user",
+      "content": "This should fail"
     }
   ],
   "stream": false

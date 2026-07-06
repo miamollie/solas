@@ -26,9 +26,16 @@ Process telemetry (local providers only):
 - `solas_llm_process_cpu_percent{provider}`
 - `solas_llm_process_rss_bytes{provider}`
 
+Process sampling supports two modes:
+
+- `device` mode (default): resolve local loopback provider PIDs and sample via host process tools (`lsof`, `ps`).
+- `container` mode: sample provider container CPU/memory from `docker stats`.
+
 ## How PID tracking works
 
 Solas resolves a provider PID when the provider base URL is local loopback (`localhost`, `127.0.0.1`, `::1`) by mapping the provider port to the listening process.
+
+For `container` mode, Solas resolves provider containers via `SOLAS_OLLAMA_CONTAINER_NAME` (recommended) or infers from the provider hostname when possible.
 
 
 ## Sampling controls
@@ -50,3 +57,4 @@ Power/process sampling interval is configured with:
 
 - On macOS, host power collection is based on `powermetrics` output parsing.
 - If host power collection fails, `solas_power_collector_healthy` is set to `0`.
+- `container` mode still reports provider CPU/memory only; host power watts remain sourced from host collector.

@@ -224,7 +224,7 @@ func EncodeOpenAIModels(w io.Writer, modelsPayload any) error {
 		return errInvalidJSON
 	}
 
-	out := OpenAIModelsResponse{Object: "list", Data: make([]OpenAIModelData, 0, len(tags.Models))}
+	out := OpenAIModelsResponse{Object: "list", Data: make([]OpenAIModelData, 0, len(tags.Models)), OwnedBy: "ollama"}
 	for _, model := range tags.Models {
 		out.Data = append(out.Data, OpenAIModelData{ID: model.Name, Object: "model"})
 	}

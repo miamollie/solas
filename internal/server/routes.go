@@ -19,6 +19,7 @@ func (s *Server) routes() http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(httpx.LoggingMiddleware(s.logger))
 
+		// TODO remove support for ollama api in favour of openAI-compatible endpoints
 		r.Route("/ollama/api", func(r chi.Router) {
 			provider := chat.ProviderOllama
 			r.Get("/tags", s.handleModels(provider))
@@ -26,15 +27,9 @@ func (s *Server) routes() http.Handler {
 			r.Get("/ps", s.handlePS(provider))
 			r.Post("/chat", s.handleChat(provider))
 		})
-
-		r.Route("/openai/v1", func(r chi.Router) {
-			provider := chat.ProviderOpenAI
-			r.Get("/models", s.handleModels(provider))
-			r.Post("/chat/completions", s.handleChat(provider))
-		})
-
+		//  Standard OpenAI-compatible endpoints for clients that expect them, proxying to the same underlying service.
 		r.Route("/v1", func(r chi.Router) {
-			provider := chat.ProviderOpenAI
+			provider := chat.ProviderOllama
 			r.Get("/models", s.handleModels(provider))
 			r.Post("/chat/completions", s.handleChat(provider))
 		})
