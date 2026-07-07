@@ -3,6 +3,8 @@
     "git add": true,
     "git commit": true,
     "git remote": true,
-    "gofmt": true
+    "gofmt": true,
+    "git switch": true,
+    "git pull": true
   }
 }
