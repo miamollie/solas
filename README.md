@@ -10,6 +10,12 @@
 
 `solas` uses structured `slog` logging in JSON format and assigns request IDs via `X-Request-ID`.
 
+## Documentation
+
+- Configuration: `docs/configuration.md`
+- Energy attribution: `docs/energy-attribution.md`
+- Metrics reference: `docs/metrics-reference.md`
+
 ## Project Layout
 
 - `cmd/solas`: binary entrypoint

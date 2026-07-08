@@ -90,5 +90,6 @@ Useful variants:
 ## Notes
 
 - Grafana default credentials are `admin` / `admin`.
+- A pre-provisioned dashboard named `Solas GreenOps Overview` is loaded automatically under the `Solas` folder.
 - Prometheus is preconfigured to scrape Solas at `solas:8000` inside Docker network.
 - Running Ollama inside Docker on macOS is typically slower and does not use host GPU acceleration effectively.
