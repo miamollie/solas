@@ -14,7 +14,6 @@ import (
 	"github.com/miamollie/solas/internal/logging"
 	"github.com/miamollie/solas/internal/metrics"
 	"github.com/miamollie/solas/internal/ollama"
-	"github.com/miamollie/solas/internal/openai"
 	"github.com/miamollie/solas/internal/power"
 	"github.com/miamollie/solas/internal/server"
 )
@@ -42,18 +41,8 @@ func runServer() {
 		return
 	}
 
-	openAIHTTPClient := &http.Client{Timeout: cfg.OpenAITimeout}
-	openAIClient, err := openai.New(cfg.OpenAI.BaseURL, cfg.OpenAI.APIKey, openAIHTTPClient)
-	if err != nil {
-		logger.Error("invalid openai configuration", "error", err)
-		return
-	}
-
 	met := metrics.New()
-	srv := server.New(logger, map[chat.Provider]chat.Client{
-		chat.ProviderOllama: ollamaClient,
-		chat.ProviderOpenAI: openAIClient,
-	}, met)
+	srv := server.New(logger, chat.Client(ollamaClient), met)
 	handler := http.TimeoutHandler(srv.Handler(), cfg.RequestTimeout, `{"error":"request timeout"}`)
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddress,

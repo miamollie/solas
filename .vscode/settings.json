@@ -5,6 +5,9 @@
     "git remote": true,
     "gofmt": true,
     "git switch": true,
-    "git pull": true
+    "git pull": true,
+    "git checkout": true,
+    "git push": true,
+    "git -C /Users/miamollie/Code/solas": true
   }
 }

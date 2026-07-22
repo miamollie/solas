@@ -25,40 +25,6 @@ type fakeLLMClient struct {
 	stream    []chat.StreamChunk
 }
 
-type captureModelClient struct {
-	receivedModel string
-}
-
-func (c *captureModelClient) Ready(_ context.Context) error {
-	return nil
-}
-
-func (c *captureModelClient) GetModels(_ context.Context) (any, error) {
-	return ollama.OllamaTagsResponse{}, nil
-}
-
-func (c *captureModelClient) GetVersion(_ context.Context) (any, error) {
-	return map[string]any{"version": "0.0.0"}, nil
-}
-
-func (c *captureModelClient) GetRunningModels(_ context.Context) (any, error) {
-	return map[string]any{"models": []any{}}, nil
-}
-
-func (c *captureModelClient) Chat(_ context.Context, reqBody chat.Request) (chat.Response, error) {
-	c.receivedModel = reqBody.Model
-	return chat.Response{Model: reqBody.Model, Message: chat.Message{Role: "assistant", Content: "ok"}}, nil
-}
-
-func (c *captureModelClient) StreamChat(_ context.Context, reqBody chat.Request) (io.ReadCloser, error) {
-	c.receivedModel = reqBody.Model
-	return io.NopCloser(strings.NewReader("")), nil
-}
-
-func (c *captureModelClient) ParseStreamChunk(_ []byte) (chat.StreamChunk, error) {
-	return chat.StreamChunk{}, nil
-}
-
 func (f fakeLLMClient) Ready(_ context.Context) error {
 	return f.err
 }
@@ -139,10 +105,7 @@ func (f fakeLLMClient) ParseStreamChunk(line []byte) (chat.StreamChunk, error) {
 
 func newTestServer(client chat.Client) *Server {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return New(logger, map[chat.Provider]chat.Client{
-		chat.ProviderOllama: client,
-		chat.ProviderOpenAI: client,
-	}, metrics.New())
+	return New(logger, client, metrics.New())
 }
 
 func TestHealthEndpoint(t *testing.T) {
@@ -154,14 +117,6 @@ func TestHealthEndpoint(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rr.Code)
-	}
-
-	var payload map[string]string
-	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-	if payload["status"] != "ok" {
-		t.Fatalf("expected status=ok, got %q", payload["status"])
 	}
 }
 
@@ -189,9 +144,9 @@ func TestReadyEndpointUnavailable(t *testing.T) {
 	}
 }
 
-func TestModelsEndpoint(t *testing.T) {
+func TestModelsEndpointOpenAIContract(t *testing.T) {
 	s := newTestServer(fakeLLMClient{modelsAny: ollama.OllamaTagsResponse{Models: []ollama.OllamaTagModel{{Name: "qwen3:32b"}}}})
-	req := httptest.NewRequest(http.MethodGet, "/ollama/api/tags", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	rr := httptest.NewRecorder()
 
 	s.Handler().ServeHTTP(rr, req)
@@ -200,15 +155,11 @@ func TestModelsEndpoint(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
 
-	var payload struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
-	}
+	var payload chat.OpenAIModelsResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
-	if len(payload.Models) != 1 || payload.Models[0].Name != "qwen3:32b" {
+	if payload.Object != "list" || len(payload.Data) != 1 || payload.Data[0].ID != "qwen3:32b" {
 		t.Fatalf("unexpected payload: %s", rr.Body.String())
 	}
 }
@@ -230,11 +181,11 @@ func TestMetricsEndpoint(t *testing.T) {
 
 func TestRequestMetricIncremented(t *testing.T) {
 	m := metrics.New()
-	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), map[chat.Provider]chat.Client{chat.ProviderOllama: fakeLLMClient{chatResp: chat.Response{
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeLLMClient{chatResp: chat.Response{
 		Model: "qwen3:32b", Message: chat.Message{Role: "assistant", Content: "ok"}, PromptTokens: 4, CompletionTokens: 6,
-	}, modelsAny: ollama.OllamaTagsResponse{}}}, m)
+	}, modelsAny: ollama.OllamaTagsResponse{}}, m)
 	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"system","content":"ctx"},{"role":"user","content":"hello"},{"role":"assistant","content":"ok"}]}`)
-	req := httptest.NewRequest(http.MethodPost, "/ollama/api/chat", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rr, req)
 
@@ -248,127 +199,6 @@ func TestRequestMetricIncremented(t *testing.T) {
 	if !strings.Contains(metricsRR.Body.String(), `solas_request_duration_seconds_count{model="qwen3:32b"} 1`) {
 		t.Fatalf("expected duration histogram count in metrics output, got: %s", metricsRR.Body.String())
 	}
-	if !strings.Contains(metricsRR.Body.String(), `solas_input_total_tokens_total{model="qwen3:32b"} 4`) {
-		t.Fatalf("expected total input token metric in metrics output, got: %s", metricsRR.Body.String())
-	}
-	if !strings.Contains(metricsRR.Body.String(), `solas_input_user_tokens_total{model="qwen3:32b"} 1`) {
-		t.Fatalf("expected user input token metric in metrics output, got: %s", metricsRR.Body.String())
-	}
-	if !strings.Contains(metricsRR.Body.String(), `solas_input_accumulated_tokens_total{model="qwen3:32b"} 2`) {
-		t.Fatalf("expected accumulated input token metric in metrics output, got: %s", metricsRR.Body.String())
-	}
-	if !strings.Contains(metricsRR.Body.String(), `solas_input_overhead_tokens_total{model="qwen3:32b"} 1`) {
-		t.Fatalf("expected overhead input token metric in metrics output, got: %s", metricsRR.Body.String())
-	}
-	if !strings.Contains(metricsRR.Body.String(), `solas_output_tokens_total{model="qwen3:32b"} 6`) {
-		t.Fatalf("expected output token metric in metrics output, got: %s", metricsRR.Body.String())
-	}
-}
-
-func TestOllamaTagsEndpoint(t *testing.T) {
-	s := newTestServer(fakeLLMClient{modelsAny: ollama.OllamaTagsResponse{Models: []ollama.OllamaTagModel{{Name: "qwen3:32b"}}}})
-	req := httptest.NewRequest(http.MethodGet, "/ollama/api/tags", nil)
-	rr := httptest.NewRecorder()
-
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rr.Code)
-	}
-
-	var payload ollama.OllamaTagsResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-	if len(payload.Models) != 1 || payload.Models[0].Name != "qwen3:32b" {
-		t.Fatalf("unexpected payload: %s", rr.Body.String())
-	}
-}
-
-func TestOllamaVersionEndpoint(t *testing.T) {
-	s := newTestServer(fakeLLMClient{})
-	req := httptest.NewRequest(http.MethodGet, "/ollama/api/version", nil)
-	rr := httptest.NewRecorder()
-
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rr.Code)
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-	if payload["version"] != "0.9.0" {
-		t.Fatalf("unexpected payload: %s", rr.Body.String())
-	}
-}
-
-func TestOllamaPSEndpoint(t *testing.T) {
-	s := newTestServer(fakeLLMClient{})
-	req := httptest.NewRequest(http.MethodGet, "/ollama/api/ps", nil)
-	rr := httptest.NewRecorder()
-
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rr.Code)
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-	models, ok := payload["models"].([]any)
-	if !ok || len(models) != 1 {
-		t.Fatalf("unexpected payload: %s", rr.Body.String())
-	}
-}
-
-func TestOllamaChatEndpoint(t *testing.T) {
-	s := newTestServer(fakeLLMClient{chatResp: chat.Response{
-		Model:            "qwen3:32b",
-		Message:          chat.Message{Role: "assistant", Content: "hi there"},
-		PromptTokens:     4,
-		CompletionTokens: 6,
-	}})
-	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
-	req := httptest.NewRequest(http.MethodPost, "/ollama/api/chat", bytes.NewReader(body))
-	rr := httptest.NewRecorder()
-
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
-	}
-	var payload ollama.OllamaChatResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if payload.Model != "qwen3:32b" || payload.PromptEvalCount != 4 || payload.EvalCount != 6 {
-		t.Fatalf("unexpected response payload: %s", rr.Body.String())
-	}
-}
-
-func TestOpenAIModelsEndpoint(t *testing.T) {
-	s := newTestServer(fakeLLMClient{modelsAny: ollama.OllamaTagsResponse{Models: []ollama.OllamaTagModel{{Name: "qwen3:32b"}}}})
-	req := httptest.NewRequest(http.MethodGet, "/openai/v1/models", nil)
-	rr := httptest.NewRecorder()
-
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rr.Code)
-	}
-
-	var payload chat.OpenAIModelsResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("failed to parse response: %v", err)
-	}
-	if payload.Object != "list" || len(payload.Data) != 1 || payload.Data[0].ID != "qwen3:32b" {
-		t.Fatalf("unexpected payload: %s", rr.Body.String())
-	}
 }
 
 func TestOpenAIChatEndpoint(t *testing.T) {
@@ -379,7 +209,7 @@ func TestOpenAIChatEndpoint(t *testing.T) {
 		CompletionTokens: 6,
 	}})
 	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}]}`)
-	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
 
 	s.Handler().ServeHTTP(rr, req)
@@ -402,7 +232,7 @@ func TestOpenAIChatStreamingEndpoint(t *testing.T) {
 		{Model: "qwen3:32b", Message: chat.Message{Role: "assistant", Content: "lo"}, Done: true, PromptTokens: 3, CompletionTokens: 5},
 	}})
 	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}],"stream":true}`)
-	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
 
 	s.Handler().ServeHTTP(rr, req)
@@ -425,14 +255,14 @@ func TestOpenAIChatStreamingEndpoint(t *testing.T) {
 	}
 }
 
-func TestOpenAILegacyV1ModelsEndpoint(t *testing.T) {
-	s := newTestServer(fakeLLMClient{modelsAny: ollama.OllamaTagsResponse{Models: []ollama.OllamaTagModel{{Name: "qwen3:32b"}}}})
-	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	rr := httptest.NewRecorder()
-
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rr.Code)
+func TestLegacyEndpointsRemoved(t *testing.T) {
+	s := newTestServer(fakeLLMClient{})
+	for _, path := range []string{"/ollama/api/chat", "/ollama/api/tags", "/openai/v1/chat/completions"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rr := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("expected 404 for %s, got %d", path, rr.Code)
+		}
 	}
 }

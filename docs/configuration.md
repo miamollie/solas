@@ -20,3 +20,4 @@ ollama:
 - `SOLAS_REQUEST_TIMEOUT` (default `60s`)
 - `SOLAS_OLLAMA_TIMEOUT` (default `60s`)
 - `SOLAS_STARTUP_TIMEOUT` (default `10s`)
+- `SOLAS_POWER_SAMPLE_INTERVAL` (default `5s`)

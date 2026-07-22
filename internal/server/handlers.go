@@ -9,118 +9,78 @@ import (
 	"github.com/miamollie/solas/internal/tokens"
 )
 
+const upstreamProviderLabel = "ollama"
+
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleReady(provider chat.Provider) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if s.chat.Ready(r.Context(), provider) != nil {
-			http.Error(w, "not ready", http.StatusServiceUnavailable)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	if s.chat.Ready(r.Context()) != nil {
+		http.Error(w, "not ready", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+}
+
+func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
+	modelsPayload, err := s.chat.GetModels(r.Context())
+	if err != nil {
+		s.logger.Error("list models failed", "error", err, "provider", upstreamProviderLabel)
+		http.Error(w, "upstream error", http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := chat.EncodeOpenAIModels(w, modelsPayload); err != nil {
+		s.logger.Error("encode models failed", "error", err, "provider", upstreamProviderLabel)
+		http.Error(w, "upstream error", http.StatusBadGateway)
 	}
 }
 
-func (s *Server) handleModels(provider chat.Provider) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		modelsPayload, err := s.chat.GetModels(r.Context(), provider)
-		if err != nil {
-			s.logger.Error("list models failed", "error", err, "provider", provider)
-			http.Error(w, "upstream error", http.StatusBadGateway)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		// TODO this is a hack to force responses in openAI format for debug purposes
-		if err := chat.EncodeModels(chat.ProviderOpenAI, w, modelsPayload); err != nil {
-			s.logger.Error("encode models failed", "error", err, "provider", provider)
-			http.Error(w, "upstream error", http.StatusBadGateway)
-		}
+func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	modelLabel := "unknown"
+	defer func() {
+		s.metrics.ObserveDuration(modelLabel, time.Since(start))
+	}()
+
+	chatReq, err := chat.DecodeOpenAIRequest(r.Body)
+	if err != nil {
+		status, message := chat.BadRequestStatus(err)
+		s.metrics.IncRequests(modelLabel, status)
+		http.Error(w, message, status)
+		return
 	}
-}
+	modelLabel = chatReq.Model
+	tokenBreakdown := tokens.AnalyzeMessages(chatReq.Messages)
+	s.metrics.IncInFlight(upstreamProviderLabel)
+	defer s.metrics.DecInFlight(upstreamProviderLabel)
 
-func (s *Server) handleVersion(provider chat.Provider) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		versionPayload, err := s.chat.GetVersion(r.Context(), provider)
-		if err != nil {
-			s.logger.Error("get version failed", "error", err, "provider", provider)
-			http.Error(w, "upstream error", http.StatusBadGateway)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(versionPayload); err != nil {
-			s.logger.Error("encode version failed", "error", err, "provider", provider)
-			http.Error(w, "upstream error", http.StatusBadGateway)
-		}
+	if chatReq.Stream {
+		s.handleChatStream(w, r, chatReq, tokenBreakdown)
+		return
 	}
-}
 
-func (s *Server) handlePS(provider chat.Provider) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		psPayload, err := s.chat.GetRunningModels(r.Context(), provider)
-		if err != nil {
-			s.logger.Error("get ps failed", "error", err, "provider", provider)
-			http.Error(w, "upstream error", http.StatusBadGateway)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(psPayload); err != nil {
-			s.logger.Error("encode ps failed", "error", err, "provider", provider)
-			http.Error(w, "upstream error", http.StatusBadGateway)
-		}
+	out, status, err := s.chat.Run(r.Context(), chatReq)
+	if err != nil {
+		s.logger.Error("chat failed", "error", err, "provider", upstreamProviderLabel)
+		s.metrics.IncRequests(chatReq.Model, status)
+		http.Error(w, "upstream error", status)
+		return
 	}
-}
 
-func (s *Server) handleChat(provider chat.Provider) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		modelLabel := "unknown"
-		defer func() {
-			s.metrics.ObserveDuration(modelLabel, time.Since(start))
-		}()
-
-		chatReq, err := chat.DecodeRequest(provider, r.Body)
-		if err != nil {
-			status, message := chat.BadRequestStatus(err)
-			s.metrics.IncRequests("unknown", status)
-			http.Error(w, message, status)
-			return
-		}
-		modelLabel = chatReq.Model
-		tokenBreakdown := tokens.AnalyzeMessages(chatReq.Messages)
-		s.metrics.IncInFlight(string(provider))
-		defer s.metrics.DecInFlight(string(provider))
-
-		if chatReq.Stream {
-			s.handleChatStream(provider, w, r, chatReq, tokenBreakdown)
-			return
-		}
-
-		out, status, err := s.chat.Run(r.Context(), provider, chatReq)
-		if err != nil {
-			s.logger.Error("chat failed", "error", err, "provider", provider)
-			s.metrics.IncRequests(chatReq.Model, status)
-			http.Error(w, "upstream error", status)
-			return
-		}
-
-		s.metrics.AddTokenUsage(chatReq.Model, out.PromptTokens, tokenBreakdown.CurrentUserTokens, tokenBreakdown.AccumulatedTokens, out.CompletionTokens)
-		s.metrics.IncRequests(chatReq.Model, http.StatusOK)
-		w.Header().Set("Content-Type", "application/json")
-		if err := chat.EncodeResponse(provider, w, out); err != nil {
-			s.logger.Error("chat response write failed", "error", err, "provider", provider)
-			s.metrics.IncRequests(chatReq.Model, http.StatusBadGateway)
-		}
+	s.metrics.AddTokenUsage(chatReq.Model, out.PromptTokens, tokenBreakdown.CurrentUserTokens, tokenBreakdown.AccumulatedTokens, out.CompletionTokens)
+	s.metrics.IncRequests(chatReq.Model, http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	if err := chat.EncodeOpenAIResponse(w, out); err != nil {
+		s.logger.Error("chat response write failed", "error", err, "provider", upstreamProviderLabel)
+		s.metrics.IncRequests(chatReq.Model, http.StatusBadGateway)
 	}
 }
 
 func (s *Server) handleChatStream(
-	provider chat.Provider,
 	w http.ResponseWriter,
 	r *http.Request,
 	req chat.Request,
@@ -130,17 +90,17 @@ func (s *Server) handleChatStream(
 	if flusher, ok := w.(http.Flusher); ok {
 		flush = flusher.Flush
 	}
-	w.Header().Set("Content-Type", chat.StreamContentType(provider))
+	w.Header().Set("Content-Type", chat.OpenAIStreamContentType)
 
-	inputTotalTokens, completionTokens, status, err := s.chat.RunStream(r.Context(), provider, req, func(chunk chat.StreamChunk) error {
-		if encodeErr := chat.EncodeStreamChunk(provider, w, chunk); encodeErr != nil {
+	inputTotalTokens, completionTokens, status, err := s.chat.RunStream(r.Context(), req, func(chunk chat.StreamChunk) error {
+		if encodeErr := chat.EncodeOpenAIStreamChunk(w, chunk); encodeErr != nil {
 			return encodeErr
 		}
 		flush()
 		return nil
 	})
 	if err != nil {
-		s.logger.Error("chat stream failed", "error", err, "provider", provider)
+		s.logger.Error("chat stream failed", "error", err, "provider", upstreamProviderLabel)
 		s.metrics.IncRequests(req.Model, status)
 		http.Error(w, "upstream error", status)
 		return
