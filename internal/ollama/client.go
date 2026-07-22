@@ -133,7 +133,7 @@ func (c *OllamaClient) Chat(ctx context.Context, req chat.Request) (chat.Respons
 
 	return chat.Response{
 		Model:            out.Model,
-		Message:          chat.Message{Role: out.Message.Role, Content: out.Message.Content},
+		Message:          chat.Message(out.Message),
 		DoneReason:       out.DoneReason,
 		PromptTokens:     out.PromptEvalCount,
 		CompletionTokens: out.EvalCount,
@@ -173,7 +173,7 @@ func (c *OllamaClient) ParseStreamChunk(line []byte) (chat.StreamChunk, error) {
 
 	return chat.StreamChunk{
 		Model:            chunk.Model,
-		Message:          chat.Message{Role: chunk.Message.Role, Content: chunk.Message.Content},
+		Message:          chat.Message(chunk.Message),
 		Done:             chunk.Done,
 		DoneReason:       chunk.DoneReason,
 		PromptTokens:     chunk.PromptEvalCount,
