@@ -24,7 +24,7 @@ func DecodeOllamaRequest(r io.Reader) (Request, error) {
 
 	out := Request{Model: req.Model, Stream: req.Stream}
 	for _, m := range req.Messages {
-		out.Messages = append(out.Messages, Message{Role: m.Role, Content: m.Content})
+		out.Messages = append(out.Messages, Message(m))
 	}
 	return out, nil
 }
@@ -41,7 +41,7 @@ func DecodeOpenAIRequest(r io.Reader) (Request, error) {
 
 	out := Request{Model: req.Model, Stream: req.Stream}
 	for _, m := range req.Messages {
-		out.Messages = append(out.Messages, Message{Role: m.Role, Content: m.Content})
+		out.Messages = append(out.Messages, Message(m))
 	}
 	return out, nil
 }

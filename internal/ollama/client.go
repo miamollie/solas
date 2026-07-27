@@ -45,7 +45,7 @@ func (c *OllamaClient) GetModels(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
@@ -68,7 +68,7 @@ func (c *OllamaClient) GetVersion(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
@@ -91,7 +91,7 @@ func (c *OllamaClient) GetRunningModels(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
@@ -121,7 +121,7 @@ func (c *OllamaClient) Chat(ctx context.Context, req chat.Request) (chat.Respons
 	if err != nil {
 		return chat.Response{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return chat.Response{}, fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
@@ -159,7 +159,7 @@ func (c *OllamaClient) StreamChat(ctx context.Context, req chat.Request) (io.Rea
 		return nil, err
 	}
 	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
 	return resp.Body, nil

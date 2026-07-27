@@ -103,7 +103,7 @@ func (s *Service) RunStream(
 		}
 		return 0, 0, http.StatusBadGateway, err
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	totalPromptTokens := 0
 	totalCompletionTokens := 0
