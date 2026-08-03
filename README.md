@@ -14,7 +14,7 @@ LLM client  ──POST /v1/chat/completions──►  Solas  ──POST /api/cha
 
 ## API
 
-All public endpoints follow the OpenAI REST contract:
+OpenAI-compatible LLM endpoints are exposed under `/v1`; additional operational endpoints are provided for health checks and Prometheus metrics:
 
 | Method | Path | Description |
 |--------|------|-------------|
