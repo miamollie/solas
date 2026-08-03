@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -12,34 +11,27 @@ import (
 
 // Service runs chat requests against a Client.
 type Service struct {
-	clients map[Provider]Client
+	client Client
 }
 
-// NewService constructs a chat service with provider-backed clients.
-func NewService(clients map[Provider]Client) *Service {
-	copyClients := make(map[Provider]Client, len(clients))
-	for provider, client := range clients {
-		if client != nil {
-			copyClients[provider] = client
-		}
-	}
-	return &Service{clients: copyClients}
+// NewService constructs a chat service with a single upstream client.
+func NewService(client Client) *Service {
+	return &Service{client: client}
 }
 
-func (s *Service) client(provider Provider) (Client, error) {
+func (s *Service) configuredClient() (Client, error) {
 	if s == nil {
 		return nil, errors.New("chat service unavailable")
 	}
-	client, ok := s.clients[provider]
-	if !ok || client == nil {
-		return nil, fmt.Errorf("llm client unavailable for provider %q", provider)
+	if s.client == nil {
+		return nil, errors.New("llm client unavailable")
 	}
-	return client, nil
+	return s.client, nil
 }
 
 // Ready delegates to the underlying client's health check.
-func (s *Service) Ready(ctx context.Context, provider Provider) error {
-	client, err := s.client(provider)
+func (s *Service) Ready(ctx context.Context) error {
+	client, err := s.configuredClient()
 	if err != nil {
 		return err
 	}
@@ -47,8 +39,8 @@ func (s *Service) Ready(ctx context.Context, provider Provider) error {
 }
 
 // GetModels delegates to the underlying client.
-func (s *Service) GetModels(ctx context.Context, provider Provider) (any, error) {
-	client, err := s.client(provider)
+func (s *Service) GetModels(ctx context.Context) (any, error) {
+	client, err := s.configuredClient()
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +48,8 @@ func (s *Service) GetModels(ctx context.Context, provider Provider) (any, error)
 }
 
 // GetVersion delegates to the underlying provider client version endpoint.
-func (s *Service) GetVersion(ctx context.Context, provider Provider) (any, error) {
-	client, err := s.client(provider)
+func (s *Service) GetVersion(ctx context.Context) (any, error) {
+	client, err := s.configuredClient()
 	if err != nil {
 		return nil, err
 	}
@@ -65,8 +57,8 @@ func (s *Service) GetVersion(ctx context.Context, provider Provider) (any, error
 }
 
 // GetRunningModels delegates to the underlying provider running-models endpoint.
-func (s *Service) GetRunningModels(ctx context.Context, provider Provider) (any, error) {
-	client, err := s.client(provider)
+func (s *Service) GetRunningModels(ctx context.Context) (any, error) {
+	client, err := s.configuredClient()
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +66,8 @@ func (s *Service) GetRunningModels(ctx context.Context, provider Provider) (any,
 }
 
 // Run executes a non-streaming chat request and returns the response with an HTTP status code.
-func (s *Service) Run(ctx context.Context, provider Provider, req Request) (Response, int, error) {
-	client, err := s.client(provider)
+func (s *Service) Run(ctx context.Context, req Request) (Response, int, error) {
+	client, err := s.configuredClient()
 	if err != nil {
 		return Response{}, http.StatusBadGateway, err
 	}
@@ -93,11 +85,10 @@ func (s *Service) Run(ctx context.Context, provider Provider, req Request) (Resp
 // Returns (promptTokens, completionTokens, httpStatus, error).
 func (s *Service) RunStream(
 	ctx context.Context,
-	provider Provider,
 	req Request,
 	onChunk func(StreamChunk) error,
 ) (int, int, int, error) {
-	client, err := s.client(provider)
+	client, err := s.configuredClient()
 	if err != nil {
 		return 0, 0, http.StatusBadGateway, err
 	}
@@ -112,7 +103,7 @@ func (s *Service) RunStream(
 		}
 		return 0, 0, http.StatusBadGateway, err
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	totalPromptTokens := 0
 	totalCompletionTokens := 0

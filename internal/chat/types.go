@@ -5,14 +5,6 @@ import (
 	"io"
 )
 
-// Provider identifies an LLM backend.
-type Provider string
-
-const (
-	ProviderOllama Provider = "ollama"
-	ProviderOpenAI Provider = "openai"
-)
-
 // Message is an internal chat message.
 type Message struct {
 	Role    string

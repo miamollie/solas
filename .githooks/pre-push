@@ -1,0 +1,13 @@
+#!/bin/sh
+# pre-push: run golangci-lint before pushing to catch CI failures locally.
+# Install via: make install-hooks
+
+set -e
+
+if ! command -v golangci-lint >/dev/null 2>&1; then
+  echo "golangci-lint not found — skipping lint (run 'brew install golangci-lint' to enable)"
+  exit 0
+fi
+
+echo "Running golangci-lint..."
+golangci-lint run ./...

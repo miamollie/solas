@@ -11,7 +11,6 @@ import (
 
 var errInvalidJSON = errors.New("invalid json")
 var errModelRequired = errors.New("model is required")
-var errUnsupportedProvider = errors.New("unsupported provider")
 
 // DecodeOllamaRequest decodes an Ollama API payload into an internal Request.
 func DecodeOllamaRequest(r io.Reader) (Request, error) {
@@ -25,21 +24,9 @@ func DecodeOllamaRequest(r io.Reader) (Request, error) {
 
 	out := Request{Model: req.Model, Stream: req.Stream}
 	for _, m := range req.Messages {
-		out.Messages = append(out.Messages, Message{Role: m.Role, Content: m.Content})
+		out.Messages = append(out.Messages, Message(m))
 	}
 	return out, nil
-}
-
-// DecodeRequest decodes a provider-specific request payload into an internal Request.
-func DecodeRequest(provider Provider, r io.Reader) (Request, error) {
-	switch provider {
-	case ProviderOllama:
-		return DecodeOllamaRequest(r)
-	case ProviderOpenAI:
-		return DecodeOpenAIRequest(r)
-	default:
-		return Request{}, errUnsupportedProvider
-	}
 }
 
 // DecodeOpenAIRequest decodes an OpenAI-compatible chat completion request.
@@ -54,7 +41,7 @@ func DecodeOpenAIRequest(r io.Reader) (Request, error) {
 
 	out := Request{Model: req.Model, Stream: req.Stream}
 	for _, m := range req.Messages {
-		out.Messages = append(out.Messages, Message{Role: m.Role, Content: m.Content})
+		out.Messages = append(out.Messages, Message(m))
 	}
 	return out, nil
 }
@@ -66,9 +53,6 @@ func BadRequestStatus(err error) (int, string) {
 	}
 	if errors.Is(err, errModelRequired) {
 		return http.StatusBadRequest, "model is required"
-	}
-	if errors.Is(err, errUnsupportedProvider) {
-		return http.StatusBadRequest, "unsupported provider"
 	}
 	return http.StatusBadRequest, "invalid request"
 }
@@ -83,18 +67,6 @@ func EncodeOllamaResponse(w io.Writer, out Response) error {
 		PromptEvalCount: out.PromptTokens,
 		EvalCount:       out.CompletionTokens,
 	})
-}
-
-// EncodeResponse encodes an internal response for the selected provider.
-func EncodeResponse(provider Provider, w io.Writer, out Response) error {
-	switch provider {
-	case ProviderOllama:
-		return EncodeOllamaResponse(w, out)
-	case ProviderOpenAI:
-		return EncodeOpenAIResponse(w, out)
-	default:
-		return errUnsupportedProvider
-	}
 }
 
 // EncodeOpenAIResponse encodes an internal response in OpenAI chat-completions format.
@@ -138,18 +110,6 @@ func EncodeOllamaStreamChunk(w io.Writer, chunk StreamChunk) error {
 	}
 	_, err = fmt.Fprintf(w, "%s\n", raw)
 	return err
-}
-
-// EncodeStreamChunk writes one provider-specific stream chunk.
-func EncodeStreamChunk(provider Provider, w io.Writer, chunk StreamChunk) error {
-	switch provider {
-	case ProviderOllama:
-		return EncodeOllamaStreamChunk(w, chunk)
-	case ProviderOpenAI:
-		return EncodeOpenAIStreamChunk(w, chunk)
-	default:
-		return errUnsupportedProvider
-	}
 }
 
 // EncodeOpenAIStreamChunk writes one SSE data frame for OpenAI-compatible streaming.
@@ -201,18 +161,6 @@ func EncodeOpenAIStreamChunk(w io.Writer, chunk StreamChunk) error {
 	return nil
 }
 
-// EncodeModels encodes provider-specific models payloads.
-func EncodeModels(provider Provider, w io.Writer, modelsPayload any) error {
-	switch provider {
-	case ProviderOllama:
-		return json.NewEncoder(w).Encode(modelsPayload)
-	case ProviderOpenAI:
-		return EncodeOpenAIModels(w, modelsPayload)
-	default:
-		return errUnsupportedProvider
-	}
-}
-
 // EncodeOpenAIModels maps upstream model listings into OpenAI's /v1/models schema.
 func EncodeOpenAIModels(w io.Writer, modelsPayload any) error {
 	if openAIModels, ok := modelsPayload.(OpenAIModelsResponse); ok {
@@ -231,14 +179,4 @@ func EncodeOpenAIModels(w io.Writer, modelsPayload any) error {
 	return json.NewEncoder(w).Encode(out)
 }
 
-// StreamContentType returns the stream response content type for the provider.
-func StreamContentType(provider Provider) string {
-	switch provider {
-	case ProviderOllama:
-		return "application/x-ndjson"
-	case ProviderOpenAI:
-		return "text/event-stream"
-	default:
-		return "application/octet-stream"
-	}
-}
+const OpenAIStreamContentType = "text/event-stream"

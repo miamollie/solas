@@ -11,7 +11,7 @@ STARTUP_TIMEOUT ?= 10s
 
 DOCKER_IMAGE ?= solas
 
-.PHONY: help build run test tidy clean docker-build docker-run docker-run-local stack-up stack-down stack-status stack-logs
+.PHONY: help build run test lint tidy clean docker-build docker-run docker-run-local stack-up stack-down stack-status stack-logs install-hooks
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Available targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -31,8 +31,14 @@ run: build ## Run solas with local Ollama defaults
 test: ## Run all Go tests
 	$(GO) test ./...
 
+lint: ## Run golangci-lint
+	golangci-lint run ./...
+
 tidy: ## Tidy Go modules
 	$(GO) mod tidy
+
+install-hooks: ## Install git hooks (e.g., pre-push lint)
+	git config core.hooksPath .githooks
 
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)

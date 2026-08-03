@@ -16,11 +16,11 @@ type Server struct {
 }
 
 // New creates a server with baseline routes.
-func New(logger *slog.Logger, clients map[chat.Provider]chat.Client, met *metrics.Metrics) *Server {
+func New(logger *slog.Logger, client chat.Client, met *metrics.Metrics) *Server {
 	if met == nil {
 		met = metrics.New()
 	}
-	s := &Server{logger: logger, chat: chat.NewService(clients), metrics: met}
+	s := &Server{logger: logger, chat: chat.NewService(client), metrics: met}
 	s.handler = s.routes()
 	return s
 }
