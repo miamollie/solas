@@ -14,14 +14,11 @@ import (
 	"github.com/miamollie/solas/internal/metrics"
 	"github.com/miamollie/solas/internal/model"
 	"github.com/miamollie/solas/internal/ollama"
-	"github.com/miamollie/solas/internal/power"
+
 	"github.com/miamollie/solas/internal/server"
 )
 
 func main() {
-	if handled, exitCode := runCLI(os.Args[1:]); handled {
-		os.Exit(exitCode)
-	}
 
 	runServer()
 }
@@ -53,17 +50,6 @@ func runServer() {
 	errCh := make(chan error, 1)
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	profiler := power.NewProfilerWithMode(
-		power.NewMacOSCollector(),
-		met,
-		logger,
-		cfg.PowerInterval,
-		cfg.Ollama.BaseURL,
-		cfg.ProcessMode,
-		cfg.Ollama.ContainerName,
-	)
-	go profiler.Start(sigCtx)
 
 	go func() {
 		logger.Info("starting solas", "listen_address", cfg.ListenAddress)

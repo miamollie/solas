@@ -5,14 +5,12 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 )
 
 const (
 	defaultListenAddress  = ":8000"
 	defaultOllamaBaseURL  = "http://127.0.0.1:11434"
-	defaultProcessMode    = "device"
 	defaultRequestTimeout = 60 * time.Second
 	defaultOllamaTimeout  = 60 * time.Second
 	defaultStartupTimeout = 10 * time.Second
@@ -23,7 +21,6 @@ const (
 type Config struct {
 	ListenAddress  string
 	Ollama         OllamaConfig
-	ProcessMode    string
 	RequestTimeout time.Duration
 	OllamaTimeout  time.Duration
 	StartupTimeout time.Duration
@@ -43,7 +40,7 @@ func LoadFromEnv() Config {
 		Ollama: OllamaConfig{
 			BaseURL: defaultOllamaBaseURL,
 		},
-		ProcessMode:    defaultProcessMode,
+
 		RequestTimeout: defaultRequestTimeout,
 		OllamaTimeout:  defaultOllamaTimeout,
 		StartupTimeout: defaultStartupTimeout,
@@ -59,9 +56,7 @@ func LoadFromEnv() Config {
 	if v := os.Getenv("SOLAS_OLLAMA_CONTAINER_NAME"); v != "" {
 		cfg.Ollama.ContainerName = v
 	}
-	if v := os.Getenv("SOLAS_PROCESS_PROFILE_MODE"); v != "" {
-		cfg.ProcessMode = normalizeProcessMode(v)
-	}
+
 	if v := os.Getenv("SOLAS_REQUEST_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.RequestTimeout = d
@@ -94,24 +89,11 @@ func Validate(cfg Config) error {
 	if _, err := net.ResolveTCPAddr("tcp", cfg.ListenAddress); err != nil {
 		return fmt.Errorf("invalid listen address: %w", err)
 	}
-	if !isValidProcessMode(cfg.ProcessMode) {
-		return fmt.Errorf("invalid process profile mode %q: must be device or container", cfg.ProcessMode)
-	}
+
 	if cfg.RequestTimeout <= 0 || cfg.OllamaTimeout <= 0 || cfg.StartupTimeout <= 0 || cfg.PowerInterval <= 0 {
 		return fmt.Errorf("timeouts must be greater than zero")
 	}
 	return nil
 }
 
-func normalizeProcessMode(v string) string {
-	mode := strings.ToLower(strings.TrimSpace(v))
-	if mode == "host" {
-		return "device"
-	}
-	return mode
-}
-
-func isValidProcessMode(v string) bool {
-	mode := normalizeProcessMode(v)
-	return mode == "device" || mode == "container"
-}
+// process profiling modes removed; running Ollama in-container only.

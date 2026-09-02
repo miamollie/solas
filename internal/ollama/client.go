@@ -12,6 +12,7 @@ import (
 	"github.com/miamollie/solas/internal/model"
 )
 
+
 // OllamaClient talks directly to Ollama's HTTP API.
 type OllamaClient struct {
 	baseURL    *url.URL

@@ -28,10 +28,6 @@ OpenAI-compatible LLM endpoints are exposed under `/v1`; additional operational 
 
 `solas` uses structured `slog` logging in JSON format and assigns request IDs via `X-Request-ID`.
 
-## Documentation
-
-- Energy attribution: `docs/energy-attribution.md`
-- Metrics reference: `docs/metrics-reference.md`
 
 ## Docker
 

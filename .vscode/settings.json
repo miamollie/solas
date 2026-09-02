@@ -9,6 +9,7 @@
     "git checkout": true,
     "git push": true,
     "git -C /Users/miamollie/Code/solas": true,
-    "make": true
+    "make": true,
+    "docker compose": true
   }
 }

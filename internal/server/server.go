@@ -15,9 +15,6 @@ type Server struct {
 
 // New creates a server with baseline routes.
 func New(logger *slog.Logger, c model.Client, met *metrics.Metrics) *Server {
-	if met == nil {
-		met = metrics.New()
-	}
 	s := &Server{logger: logger, llmClient: c, metrics: met}
 	return s
 }

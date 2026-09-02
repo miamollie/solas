@@ -6,20 +6,17 @@ This stack runs:
 - Open WebUI on `http://localhost:3000`
 - Prometheus on `http://localhost:9090`
 - Grafana on `http://localhost:3001`
+- Ollama
 
-Ollama stays on your host machine so it can use your local GPU/accelerator.
+_Caveat: Ollama docker container suffers substantial performance degradation on MacOs due to inability to access GPU_
+
+<!-- TODO add reference to why that is -->
 
 ## Prerequisites
 
-1. Install and start Ollama on host.
-2. Pull at least one model in Ollama.
-3. Install Docker Desktop.
+1. Install docker desktop
+2. Is that the only prereq?
 
-Quick check:
-
-```bash
-curl http://127.0.0.1:11434/api/tags
-```
 
 ## Bring stack up
 
@@ -29,14 +26,7 @@ From repository root:
 make stack-up
 ```
 
-or directly via CLI:
 
-```bash
-go build -o bin/solas ./cmd/solas
-./bin/solas up
-```
-
-The `solas up` command checks that Ollama is reachable on host first, then runs Docker Compose from `solas-stack/docker-compose.yml`.
 
 Use Open WebUI with:
 
@@ -49,22 +39,10 @@ Use Open WebUI with:
 make stack-down
 ```
 
-or:
-
-```bash
-./bin/solas down
-```
-
 ## Check status
 
 ```bash
 make stack-status
-```
-
-or:
-
-```bash
-./bin/solas status
 ```
 
 This shows Docker Compose service state and whether host Ollama is reachable.
@@ -75,11 +53,6 @@ This shows Docker Compose service state and whether host Ollama is reachable.
 make stack-logs
 ```
 
-or:
-
-```bash
-./bin/solas logs
-```
 
 Useful variants:
 
@@ -93,3 +66,12 @@ Useful variants:
 - A pre-provisioned dashboard named `Solas GreenOps Overview` is loaded automatically under the `Solas` folder.
 - Prometheus is preconfigured to scrape Solas at `solas:8000` inside Docker network.
 - Running Ollama inside Docker on macOS is typically slower and does not use host GPU acceleration effectively.
+
+
+## Roadmap / TODO
+Tomorrow: remember why you're doing this, and go step by step from there. Don't forget this is for learning, so dead ends are valuable too
+
+Importantly, you've lost data coming from solas into prom/grafana. In particular all the token counts etc that make this most useful as a system. 
+
+Currently you're figuring out how to pull models in the ollama container - seemingly it will be via the webui
+
