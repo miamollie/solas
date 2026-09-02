@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/miamollie/solas/internal/chat"
+	"github.com/miamollie/solas/internal/model"
 )
 
 // OllamaClient talks directly to Ollama's HTTP API.
@@ -57,90 +57,44 @@ func (c *OllamaClient) GetModels(ctx context.Context) (any, error) {
 	return tags, nil
 }
 
-func (c *OllamaClient) GetVersion(ctx context.Context) (any, error) {
-	u := c.baseURL.JoinPath("/api/version")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
-	}
-
-	var payload map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, err
-	}
-	return payload, nil
-}
-
-func (c *OllamaClient) GetRunningModels(ctx context.Context) (any, error) {
-	u := c.baseURL.JoinPath("/api/ps")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
-	}
-
-	var payload map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, err
-	}
-	return payload, nil
-}
-
-func (c *OllamaClient) Chat(ctx context.Context, req chat.Request) (chat.Response, error) {
+func (c *OllamaClient) Chat(ctx context.Context, req model.Request) (model.Response, error) {
 	payload := c.toPayload(req, false)
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return chat.Response{}, err
+		return model.Response{}, err
 	}
 
 	u := c.baseURL.JoinPath("/api/chat")
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(raw))
 	if err != nil {
-		return chat.Response{}, err
+		return model.Response{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return chat.Response{}, err
+		return model.Response{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
-		return chat.Response{}, fmt.Errorf("ollama returned status %d", resp.StatusCode)
+		return model.Response{}, fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
 
 	var out OllamaChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return chat.Response{}, err
+		return model.Response{}, err
 	}
 
-	return chat.Response{
+	return model.Response{
 		Model:            out.Model,
-		Message:          chat.Message(out.Message),
+		Message:          model.Message(out.Message),
 		DoneReason:       out.DoneReason,
 		PromptTokens:     out.PromptEvalCount,
 		CompletionTokens: out.EvalCount,
 	}, nil
 }
 
-func (c *OllamaClient) StreamChat(ctx context.Context, req chat.Request) (io.ReadCloser, error) {
+func (c *OllamaClient) StreamChat(ctx context.Context, req model.Request) (io.ReadCloser, error) {
 	payload := c.toPayload(req, true)
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -165,15 +119,15 @@ func (c *OllamaClient) StreamChat(ctx context.Context, req chat.Request) (io.Rea
 	return resp.Body, nil
 }
 
-func (c *OllamaClient) ParseStreamChunk(line []byte) (chat.StreamChunk, error) {
+func (c *OllamaClient) ParseStreamChunk(line []byte) (model.StreamChunk, error) {
 	var chunk OllamaChatResponse
 	if err := json.Unmarshal(line, &chunk); err != nil {
-		return chat.StreamChunk{}, err
+		return model.StreamChunk{}, err
 	}
 
-	return chat.StreamChunk{
+	return model.StreamChunk{
 		Model:            chunk.Model,
-		Message:          chat.Message(chunk.Message),
+		Message:          model.Message(chunk.Message),
 		Done:             chunk.Done,
 		DoneReason:       chunk.DoneReason,
 		PromptTokens:     chunk.PromptEvalCount,
@@ -181,7 +135,7 @@ func (c *OllamaClient) ParseStreamChunk(line []byte) (chat.StreamChunk, error) {
 	}, nil
 }
 
-func (c *OllamaClient) toPayload(req chat.Request, forceStream bool) map[string]any {
+func (c *OllamaClient) toPayload(req model.Request, forceStream bool) map[string]any {
 	messages := make([]map[string]string, 0, len(req.Messages))
 	for _, m := range req.Messages {
 		messages = append(messages, map[string]string{"role": m.Role, "content": m.Content})

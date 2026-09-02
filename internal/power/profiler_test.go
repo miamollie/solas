@@ -53,32 +53,29 @@ func TestIdleProcessSamplingInterval(t *testing.T) {
 }
 
 func TestShouldSampleProcessWithInflight(t *testing.T) {
-	m := metrics.New()
-	m.IncInFlight("ollama")
-	p := NewProfiler(nil, m, nil, 5*time.Second, map[string]string{"ollama": "http://127.0.0.1:11434"})
-	p.lastProcessSampleAt["ollama"] = time.Now()
+	p := NewProfiler(nil, metrics.New(), nil, 5*time.Second, "http://127.0.0.1:11434")
+	p.lastProcessSampleAt = time.Time{}
 
-	if !p.shouldSampleProcess("ollama", time.Now()) {
-		t.Fatalf("expected active provider to be sampled immediately")
+	if !p.shouldSampleProcess(time.Now()) {
+		t.Fatalf("expected first process sample to run immediately")
 	}
 }
 
 func TestShouldSampleProcessIdleBackoff(t *testing.T) {
-	m := metrics.New()
-	p := NewProfiler(nil, m, nil, 5*time.Second, map[string]string{"ollama": "http://127.0.0.1:11434"})
+	p := NewProfiler(nil, metrics.New(), nil, 5*time.Second, "http://127.0.0.1:11434")
 	now := time.Now()
-	p.lastProcessSampleAt["ollama"] = now
+	p.lastProcessSampleAt = now
 
-	if p.shouldSampleProcess("ollama", now.Add(10*time.Second)) {
+	if p.shouldSampleProcess(now.Add(10 * time.Second)) {
 		t.Fatalf("expected idle provider sampling to back off before interval")
 	}
-	if !p.shouldSampleProcess("ollama", now.Add(31*time.Second)) {
+	if !p.shouldSampleProcess(now.Add(31 * time.Second)) {
 		t.Fatalf("expected idle provider sampling after backoff interval")
 	}
 }
 
 func TestNewProfilerWithModeDefaultsToDevice(t *testing.T) {
-	p := NewProfilerWithMode(nil, metrics.New(), nil, 5*time.Second, nil, "invalid", nil)
+	p := NewProfilerWithMode(nil, metrics.New(), nil, 5*time.Second, "", "invalid", "")
 	if p.mode != ProcessModeDevice {
 		t.Fatalf("expected invalid mode to default to device, got %q", p.mode)
 	}

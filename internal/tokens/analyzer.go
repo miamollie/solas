@@ -3,7 +3,7 @@ package tokens
 import (
 	"strings"
 
-	"github.com/miamollie/solas/internal/chat"
+	"github.com/miamollie/solas/internal/model"
 )
 
 // Breakdown captures estimated input token splits from the request payload.
@@ -14,7 +14,7 @@ type Breakdown struct {
 
 // AnalyzeMessages estimates token splits by treating fields-separated words as token units.
 // CurrentUserTokens is the most recent user message; AccumulatedTokens is everything else.
-func AnalyzeMessages(messages []chat.Message) Breakdown {
+func AnalyzeMessages(messages []model.Message) Breakdown {
 	total := 0
 	lastUserIdx := -1
 	lastUserTokens := 0

@@ -16,13 +16,13 @@ LLM client  ──POST /v1/chat/completions──►  Solas  ──POST /api/cha
 
 OpenAI-compatible LLM endpoints are exposed under `/v1`; additional operational endpoints are provided for health checks and Prometheus metrics:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Liveness probe |
-| GET | `/ready` | Readiness probe (checks Ollama connectivity) |
-| GET | `/v1/models` | List available Ollama models |
-| POST | `/v1/chat/completions` | Chat completion (streaming and non-streaming) |
-| GET | `/metrics` | Prometheus metrics scrape endpoint |
+| Method | Path                   | Description                                   |
+| ------ | ---------------------- | --------------------------------------------- |
+| GET    | `/health`              | Liveness probe                                |
+| GET    | `/ready`               | Readiness probe (checks Ollama connectivity)  |
+| GET    | `/v1/models`           | List available Ollama models                  |
+| POST   | `/v1/chat/completions` | Chat completion (streaming and non-streaming) |
+| GET    | `/metrics`             | Prometheus metrics scrape endpoint            |
 
 ## Logging
 
@@ -30,15 +30,8 @@ OpenAI-compatible LLM endpoints are exposed under `/v1`; additional operational 
 
 ## Documentation
 
-- Configuration: `docs/configuration.md`
 - Energy attribution: `docs/energy-attribution.md`
 - Metrics reference: `docs/metrics-reference.md`
-
-## Project Layout
-
-- `cmd/solas`: binary entrypoint
-- `internal/`: private application packages
-- `pkg/`: public/shared packages (if needed)
 
 ## Docker
 

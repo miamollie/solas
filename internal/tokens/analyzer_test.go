@@ -3,11 +3,11 @@ package tokens
 import (
 	"testing"
 
-	"github.com/miamollie/solas/internal/chat"
+	"github.com/miamollie/solas/internal/model"
 )
 
 func TestAnalyzeMessagesMostRecentUserAndAccumulated(t *testing.T) {
-	messages := []chat.Message{
+	messages := []model.Message{
 		{Role: "system", Content: "policy ctx"},
 		{Role: "user", Content: "older question here"},
 		{Role: "assistant", Content: "older answer"},
@@ -25,7 +25,7 @@ func TestAnalyzeMessagesMostRecentUserAndAccumulated(t *testing.T) {
 }
 
 func TestAnalyzeMessagesWithoutUserMessage(t *testing.T) {
-	messages := []chat.Message{
+	messages := []model.Message{
 		{Role: "system", Content: "one two"},
 		{Role: "assistant", Content: "three"},
 	}

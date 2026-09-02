@@ -13,16 +13,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/miamollie/solas/internal/chat"
 	"github.com/miamollie/solas/internal/metrics"
+	"github.com/miamollie/solas/internal/model"
 	"github.com/miamollie/solas/internal/ollama"
+	"github.com/miamollie/solas/internal/openai"
 )
 
 type fakeLLMClient struct {
 	err       error
 	modelsAny any
-	chatResp  chat.Response
-	stream    []chat.StreamChunk
+	chatResp  model.Response
+	stream    []model.StreamChunk
 }
 
 func (f fakeLLMClient) Ready(_ context.Context) error {
@@ -39,31 +40,17 @@ func (f fakeLLMClient) GetModels(_ context.Context) (any, error) {
 	return f.modelsAny, nil
 }
 
-func (f fakeLLMClient) GetVersion(_ context.Context) (any, error) {
+func (f fakeLLMClient) Chat(_ context.Context, reqBody model.Request) (model.Response, error) {
 	if f.err != nil {
-		return nil, f.err
-	}
-	return map[string]any{"version": "0.9.0"}, nil
-}
-
-func (f fakeLLMClient) GetRunningModels(_ context.Context) (any, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return map[string]any{"models": []any{map[string]any{"name": "qwen3:32b"}}}, nil
-}
-
-func (f fakeLLMClient) Chat(_ context.Context, reqBody chat.Request) (chat.Response, error) {
-	if f.err != nil {
-		return chat.Response{}, f.err
+		return model.Response{}, f.err
 	}
 	if reqBody.Stream {
-		return chat.Response{}, errors.New("expected non-streaming")
+		return model.Response{}, errors.New("expected non-streaming")
 	}
 	return f.chatResp, nil
 }
 
-func (f fakeLLMClient) StreamChat(_ context.Context, reqBody chat.Request) (io.ReadCloser, error) {
+func (f fakeLLMClient) StreamChat(_ context.Context, reqBody model.Request) (io.ReadCloser, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -88,14 +75,14 @@ func (f fakeLLMClient) StreamChat(_ context.Context, reqBody chat.Request) (io.R
 	return io.NopCloser(strings.NewReader(strings.Join(lines, "\n"))), nil
 }
 
-func (f fakeLLMClient) ParseStreamChunk(line []byte) (chat.StreamChunk, error) {
+func (f fakeLLMClient) ParseStreamChunk(line []byte) (model.StreamChunk, error) {
 	var chunk ollama.OllamaChatResponse
 	if err := json.Unmarshal(line, &chunk); err != nil {
-		return chat.StreamChunk{}, err
+		return model.StreamChunk{}, err
 	}
-	return chat.StreamChunk{
+	return model.StreamChunk{
 		Model:            chunk.Model,
-		Message:          chat.Message{Role: chunk.Message.Role, Content: chunk.Message.Content},
+		Message:          model.Message{Role: chunk.Message.Role, Content: chunk.Message.Content},
 		Done:             chunk.Done,
 		DoneReason:       chunk.DoneReason,
 		PromptTokens:     chunk.PromptEvalCount,
@@ -103,7 +90,7 @@ func (f fakeLLMClient) ParseStreamChunk(line []byte) (chat.StreamChunk, error) {
 	}, nil
 }
 
-func newTestServer(client chat.Client) *Server {
+func newTestServer(client model.Client) *Server {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return New(logger, client, metrics.New())
 }
@@ -155,7 +142,7 @@ func TestModelsEndpointOpenAIContract(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rr.Code)
 	}
 
-	var payload chat.OpenAIModelsResponse
+	var payload openai.ModelsResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
@@ -181,8 +168,8 @@ func TestMetricsEndpoint(t *testing.T) {
 
 func TestRequestMetricIncremented(t *testing.T) {
 	m := metrics.New()
-	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeLLMClient{chatResp: chat.Response{
-		Model: "qwen3:32b", Message: chat.Message{Role: "assistant", Content: "ok"}, PromptTokens: 4, CompletionTokens: 6,
+	s := New(slog.New(slog.NewTextHandler(io.Discard, nil)), fakeLLMClient{chatResp: model.Response{
+		Model: "qwen3:32b", Message: model.Message{Role: "assistant", Content: "ok"}, PromptTokens: 4, CompletionTokens: 6,
 	}, modelsAny: ollama.OllamaTagsResponse{}}, m)
 	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"system","content":"ctx"},{"role":"user","content":"hello"},{"role":"assistant","content":"ok"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
@@ -202,9 +189,9 @@ func TestRequestMetricIncremented(t *testing.T) {
 }
 
 func TestOpenAIChatEndpoint(t *testing.T) {
-	s := newTestServer(fakeLLMClient{chatResp: chat.Response{
+	s := newTestServer(fakeLLMClient{chatResp: model.Response{
 		Model:            "qwen3:32b",
-		Message:          chat.Message{Role: "assistant", Content: "hi there"},
+		Message:          model.Message{Role: "assistant", Content: "hi there"},
 		PromptTokens:     4,
 		CompletionTokens: 6,
 	}})
@@ -217,7 +204,7 @@ func TestOpenAIChatEndpoint(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	var payload chat.OpenAIChatCompletionsResponse
+	var payload openai.ChatCompletionsResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -227,9 +214,9 @@ func TestOpenAIChatEndpoint(t *testing.T) {
 }
 
 func TestOpenAIChatStreamingEndpoint(t *testing.T) {
-	s := newTestServer(fakeLLMClient{stream: []chat.StreamChunk{
-		{Model: "qwen3:32b", Message: chat.Message{Role: "assistant", Content: "hel"}, Done: false},
-		{Model: "qwen3:32b", Message: chat.Message{Role: "assistant", Content: "lo"}, Done: true, PromptTokens: 3, CompletionTokens: 5},
+	s := newTestServer(fakeLLMClient{stream: []model.StreamChunk{
+		{Model: "qwen3:32b", Message: model.Message{Role: "assistant", Content: "hel"}, Done: false},
+		{Model: "qwen3:32b", Message: model.Message{Role: "assistant", Content: "lo"}, Done: true, PromptTokens: 3, CompletionTokens: 5},
 	}})
 	body := []byte(`{"model":"qwen3:32b","messages":[{"role":"user","content":"hello"}],"stream":true}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))

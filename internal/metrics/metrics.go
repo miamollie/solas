@@ -3,7 +3,6 @@ package metrics
 import (
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,7 +14,6 @@ import (
 type Metrics struct {
 	Registry      *prometheus.Registry
 	handler       http.Handler
-	mu            sync.RWMutex
 	inflightCount map[string]int64
 	requests      *prometheus.CounterVec
 	duration      *prometheus.HistogramVec
@@ -56,9 +54,9 @@ func New() *Metrics {
 	inflight := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "solas_llm_inflight_requests",
-			Help: "Current number of in-flight upstream LLM requests by provider.",
+			Help: "Current number of in-flight upstream LLM requests by llm.",
 		},
-		[]string{"provider"},
+		[]string{"llm"},
 	)
 	inputTotal := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -114,23 +112,23 @@ func New() *Metrics {
 	processPID := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "solas_llm_process_pid",
-			Help: "Resolved local process id for each configured LLM provider (0 if unknown).",
+			Help: "Resolved local process id for each configured LLM (0 if unknown).",
 		},
-		[]string{"provider"},
+		[]string{"llm"},
 	)
 	processCPU := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "solas_llm_process_cpu_percent",
 			Help: "Latest sampled CPU percentage for the resolved local LLM process.",
 		},
-		[]string{"provider"},
+		[]string{"llm"},
 	)
 	processRSS := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "solas_llm_process_rss_bytes",
 			Help: "Latest sampled RSS memory in bytes for the resolved local LLM process.",
 		},
-		[]string{"provider"},
+		[]string{"llm"},
 	)
 	reg.MustRegister(requests, duration, inflight, inputTotal, inputUser, inputAccum, inputOverhead, output, powerCPU, powerGPU, powerTotal, powerHealthy, processPID, processCPU, processRSS)
 	return &Metrics{
@@ -176,40 +174,6 @@ func (m *Metrics) ObserveDuration(model string, d time.Duration) {
 	m.duration.WithLabelValues(model).Observe(d.Seconds())
 }
 
-// IncInFlight increments the in-flight request gauge by provider.
-func (m *Metrics) IncInFlight(provider string) {
-	if provider == "" {
-		provider = "unknown"
-	}
-	m.mu.Lock()
-	m.inflightCount[provider]++
-	m.mu.Unlock()
-	m.inflight.WithLabelValues(provider).Inc()
-}
-
-// DecInFlight decrements the in-flight request gauge by provider.
-func (m *Metrics) DecInFlight(provider string) {
-	if provider == "" {
-		provider = "unknown"
-	}
-	m.mu.Lock()
-	if m.inflightCount[provider] > 0 {
-		m.inflightCount[provider]--
-	}
-	m.mu.Unlock()
-	m.inflight.WithLabelValues(provider).Dec()
-}
-
-// InFlight returns the current in-memory in-flight count for a provider.
-func (m *Metrics) InFlight(provider string) int64 {
-	if provider == "" {
-		provider = "unknown"
-	}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.inflightCount[provider]
-}
-
 // AddTokenUsage increments input and output token counters by model.
 func (m *Metrics) AddTokenUsage(model string, inputTotalTokens, inputUserTokens, inputAccumulatedTokens, outputTokens int) {
 	if model == "" {
@@ -242,12 +206,12 @@ func (m *Metrics) SetPowerCollectorHealthy(healthy bool) {
 	m.powerHealthy.Set(0)
 }
 
-// SetLLMProcessMetrics stores resolved local process metrics by provider.
-func (m *Metrics) SetLLMProcessMetrics(provider string, pid int, cpuPercent float64, rssBytes float64) {
-	if provider == "" {
-		provider = "unknown"
+// SetLLMProcessMetrics stores resolved local process metrics by llm.
+func (m *Metrics) SetLLMProcessMetrics(llm string, pid int, cpuPercent float64, rssBytes float64) {
+	if llm == "" {
+		llm = "unknown"
 	}
-	m.processPID.WithLabelValues(provider).Set(float64(pid))
-	m.processCPU.WithLabelValues(provider).Set(cpuPercent)
-	m.processRSS.WithLabelValues(provider).Set(rssBytes)
+	m.processPID.WithLabelValues(llm).Set(float64(pid))
+	m.processCPU.WithLabelValues(llm).Set(cpuPercent)
+	m.processRSS.WithLabelValues(llm).Set(rssBytes)
 }

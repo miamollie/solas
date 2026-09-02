@@ -26,7 +26,7 @@ This document describes Solas-exported Prometheus metrics for local GreenOps obs
 ### `solas_llm_inflight_requests`
 
 - Type: Gauge
-- Labels: `provider`
+- Labels: `llm`
 - Unit: requests
 - Description: Current number of in-flight upstream LLM requests.
 
@@ -97,33 +97,33 @@ This document describes Solas-exported Prometheus metrics for local GreenOps obs
 - Unit: boolean encoded as number (`1` healthy, `0` unhealthy)
 - Description: Health state of the active power collector.
 
-## Provider Process Metrics
+## LLM Process Metrics
 
 ### `solas_llm_process_pid`
 
 - Type: Gauge
-- Labels: `provider`
+- Labels: `llm`
 - Unit: process id
-- Description: Resolved local provider PID when available, else `0`.
+- Description: Resolved local LLM PID when available, else `0`.
 
 ### `solas_llm_process_cpu_percent`
 
 - Type: Gauge
-- Labels: `provider`
+- Labels: `llm`
 - Unit: percent
-- Description: Latest sampled provider CPU usage percent.
+- Description: Latest sampled LLM CPU usage percent.
 
 ### `solas_llm_process_rss_bytes`
 
 - Type: Gauge
-- Labels: `provider`
+- Labels: `llm`
 - Unit: bytes
-- Description: Latest sampled provider RSS memory in bytes.
+- Description: Latest sampled LLM RSS memory in bytes.
 
 ## Notes and Caveats
 
-- Provider process metrics are best-effort.
+- LLM process metrics are best-effort.
 - In `device` mode, Solas samples host process metrics (`lsof` + `ps`).
-- In `container` mode, Solas samples provider container usage from `docker stats`.
+- In `container` mode, Solas samples LLM container usage from `docker stats`.
 - On macOS, host power currently comes from `powermetrics` parsing.
 - Solas also exports default Go runtime and process metrics from the Prometheus Go client collectors.
