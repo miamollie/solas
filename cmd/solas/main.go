@@ -9,10 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/miamollie/solas/internal/chat"
 	"github.com/miamollie/solas/internal/config"
 	"github.com/miamollie/solas/internal/logging"
 	"github.com/miamollie/solas/internal/metrics"
+	"github.com/miamollie/solas/internal/model"
 	"github.com/miamollie/solas/internal/ollama"
 	"github.com/miamollie/solas/internal/power"
 	"github.com/miamollie/solas/internal/server"
@@ -42,7 +42,7 @@ func runServer() {
 	}
 
 	met := metrics.New()
-	srv := server.New(logger, chat.Client(ollamaClient), met)
+	srv := server.New(logger, model.Client(ollamaClient), met)
 	handler := http.TimeoutHandler(srv.Handler(), cfg.RequestTimeout, `{"error":"request timeout"}`)
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddress,
@@ -59,13 +59,9 @@ func runServer() {
 		met,
 		logger,
 		cfg.PowerInterval,
-		map[string]string{
-			"ollama": cfg.Ollama.BaseURL,
-		},
+		cfg.Ollama.BaseURL,
 		cfg.ProcessMode,
-		map[string]string{
-			"ollama": cfg.Ollama.ContainerName,
-		},
+		cfg.Ollama.ContainerName,
 	)
 	go profiler.Start(sigCtx)
 

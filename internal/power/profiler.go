@@ -20,6 +20,7 @@ import (
 const (
 	ProcessModeDevice    = "device"
 	ProcessModeContainer = "container"
+	profiledLLMLabel     = "ollama"
 )
 
 var sizePattern = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z]+)$`)
@@ -33,43 +34,35 @@ type Profiler struct {
 	logger              *slog.Logger
 	interval            time.Duration
 	mode                string
-	providers           map[string]string
-	providerContainers  map[string]string
-	pidCache            map[string]int
-	lastProcessSampleAt map[string]time.Time
+	baseURL             string
+	containerName       string
+	pid                 int
+	lastProcessSampleAt time.Time
 	commandOutput       commandOutputFunc
 }
 
 // NewProfiler creates a background power profiler.
-func NewProfiler(collector Collector, met *metrics.Metrics, logger *slog.Logger, interval time.Duration, providers map[string]string) *Profiler {
-	return NewProfilerWithMode(collector, met, logger, interval, providers, ProcessModeDevice, nil)
+func NewProfiler(collector Collector, met *metrics.Metrics, logger *slog.Logger, interval time.Duration, baseURL string) *Profiler {
+	return NewProfilerWithMode(collector, met, logger, interval, baseURL, ProcessModeDevice, "")
 }
 
 // NewProfilerWithMode creates a background power profiler with process sampling mode.
-func NewProfilerWithMode(collector Collector, met *metrics.Metrics, logger *slog.Logger, interval time.Duration, providers map[string]string, mode string, providerContainers map[string]string) *Profiler {
+func NewProfilerWithMode(collector Collector, met *metrics.Metrics, logger *slog.Logger, interval time.Duration, baseURL, mode, containerName string) *Profiler {
 	if interval <= 0 {
 		interval = 5 * time.Second
-	}
-	if providers == nil {
-		providers = map[string]string{}
-	}
-	if providerContainers == nil {
-		providerContainers = map[string]string{}
 	}
 	if mode != ProcessModeContainer {
 		mode = ProcessModeDevice
 	}
 	return &Profiler{
-		collector:           collector,
-		metrics:             met,
-		logger:              logger,
-		interval:            interval,
-		mode:                mode,
-		providers:           providers,
-		providerContainers:  providerContainers,
-		pidCache:            map[string]int{},
-		lastProcessSampleAt: map[string]time.Time{},
-		commandOutput:       runCommandOutput,
+		collector:     collector,
+		metrics:       met,
+		logger:        logger,
+		interval:      interval,
+		mode:          mode,
+		baseURL:       baseURL,
+		containerName: strings.TrimSpace(containerName),
+		commandOutput: runCommandOutput,
 	}
 }
 
@@ -109,72 +102,71 @@ func (p *Profiler) sampleOnce(ctx context.Context) {
 		p.metrics.SetPowerSample(sample.CPUWatts, sample.GPUWatts, sample.TotalWatts)
 	}
 
-	now := time.Now()
-	for provider, baseURL := range p.providers {
-		if !p.shouldSampleProcess(provider, now) {
-			continue
-		}
-		p.lastProcessSampleAt[provider] = now
-
-		if p.mode == ProcessModeContainer {
-			p.sampleContainerProcess(ctx, provider, baseURL)
-			continue
-		}
-
-		p.sampleHostProcess(ctx, provider, baseURL)
+	if strings.TrimSpace(p.baseURL) == "" {
+		return
 	}
+
+	now := time.Now()
+	if !p.shouldSampleProcess(now) {
+		return
+	}
+	p.lastProcessSampleAt = now
+
+	if p.mode == ProcessModeContainer {
+		p.sampleContainerProcess(ctx)
+		return
+	}
+
+	p.sampleHostProcess(ctx)
 }
 
-func (p *Profiler) sampleHostProcess(ctx context.Context, provider, baseURL string) {
-	pid := p.pidCache[provider]
+func (p *Profiler) sampleHostProcess(ctx context.Context) {
+	pid := p.pid
 	if pid <= 0 {
 		pidCtx, cancelPID := context.WithTimeout(ctx, 1500*time.Millisecond)
-		resolvedPID, pidErr := resolveListeningPID(pidCtx, baseURL)
+		resolvedPID, pidErr := resolveListeningPID(pidCtx, p.baseURL)
 		cancelPID()
 		if pidErr != nil || resolvedPID <= 0 {
-			p.pidCache[provider] = 0
-			p.metrics.SetLLMProcessMetrics(provider, 0, 0, 0)
+			p.pid = 0
+			p.metrics.SetLLMProcessMetrics(profiledLLMLabel, 0, 0, 0)
 			return
 		}
 		pid = resolvedPID
-		p.pidCache[provider] = pid
+		p.pid = pid
 	}
 
 	statsCtx, cancelStats := context.WithTimeout(ctx, 1500*time.Millisecond)
 	cpuPercent, rssBytes, statsErr := sampleProcessStats(statsCtx, pid)
 	cancelStats()
 	if statsErr != nil {
-		p.pidCache[provider] = 0
-		p.metrics.SetLLMProcessMetrics(provider, pid, 0, 0)
+		p.pid = 0
+		p.metrics.SetLLMProcessMetrics(profiledLLMLabel, pid, 0, 0)
 		return
 	}
-	p.metrics.SetLLMProcessMetrics(provider, pid, cpuPercent, rssBytes)
+	p.metrics.SetLLMProcessMetrics(profiledLLMLabel, pid, cpuPercent, rssBytes)
 }
 
-func (p *Profiler) sampleContainerProcess(ctx context.Context, provider, baseURL string) {
-	containerName := p.providerContainers[provider]
+func (p *Profiler) sampleContainerProcess(ctx context.Context) {
+	containerName := p.containerName
 	if containerName == "" {
-		containerName = inferContainerFromBaseURL(baseURL)
+		containerName = inferContainerFromBaseURL(p.baseURL)
 	}
 	if containerName == "" {
-		p.metrics.SetLLMProcessMetrics(provider, 0, 0, 0)
+		p.metrics.SetLLMProcessMetrics(profiledLLMLabel, 0, 0, 0)
 		return
 	}
 	statsCtx, cancelStats := context.WithTimeout(ctx, 1500*time.Millisecond)
 	cpuPercent, rssBytes, statsErr := sampleContainerStats(statsCtx, containerName, p.commandOutput)
 	cancelStats()
 	if statsErr != nil {
-		p.metrics.SetLLMProcessMetrics(provider, 0, 0, 0)
+		p.metrics.SetLLMProcessMetrics(profiledLLMLabel, 0, 0, 0)
 		return
 	}
-	p.metrics.SetLLMProcessMetrics(provider, 0, cpuPercent, rssBytes)
+	p.metrics.SetLLMProcessMetrics(profiledLLMLabel, 0, cpuPercent, rssBytes)
 }
 
-func (p *Profiler) shouldSampleProcess(provider string, now time.Time) bool {
-	if p.metrics.InFlight(provider) > 0 {
-		return true
-	}
-	last := p.lastProcessSampleAt[provider]
+func (p *Profiler) shouldSampleProcess(now time.Time) bool {
+	last := p.lastProcessSampleAt
 	if last.IsZero() {
 		return true
 	}

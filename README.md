@@ -16,13 +16,13 @@ LLM client  ──POST /v1/chat/completions──►  Solas  ──POST /api/cha
 
 All public endpoints follow the OpenAI REST contract:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Liveness probe |
-| GET | `/ready` | Readiness probe (checks Ollama connectivity) |
-| GET | `/v1/models` | List available Ollama models |
-| POST | `/v1/chat/completions` | Chat completion (streaming and non-streaming) |
-| GET | `/metrics` | Prometheus metrics scrape endpoint |
+| Method | Path                   | Description                                   |
+| ------ | ---------------------- | --------------------------------------------- |
+| GET    | `/health`              | Liveness probe                                |
+| GET    | `/ready`               | Readiness probe (checks Ollama connectivity)  |
+| GET    | `/v1/models`           | List available Ollama models                  |
+| POST   | `/v1/chat/completions` | Chat completion (streaming and non-streaming) |
+| GET    | `/metrics`             | Prometheus metrics scrape endpoint            |
 
 ## Logging
 
@@ -30,15 +30,8 @@ All public endpoints follow the OpenAI REST contract:
 
 ## Documentation
 
-- Configuration: `docs/configuration.md`
 - Energy attribution: `docs/energy-attribution.md`
 - Metrics reference: `docs/metrics-reference.md`
-
-## Project Layout
-
-- `cmd/solas`: binary entrypoint
-- `internal/`: private application packages
-- `pkg/`: public/shared packages (if needed)
 
 ## Docker
 
