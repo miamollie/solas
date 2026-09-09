@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/miamollie/solas/internal/model"
@@ -47,6 +48,41 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := openai.EncodeModels(w, modelsPayload); err != nil {
 		s.logger.Error("encode models failed", "error", err, "provider", upstreamProviderLabel)
+		http.Error(w, "upstream error", http.StatusBadGateway)
+	}
+}
+
+func (s *Server) handlePullModel(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	modelName := strings.TrimSpace(payload.Model)
+	if modelName == "" {
+		http.Error(w, "model is required", http.StatusBadRequest)
+		return
+	}
+
+	client, err := s.configuredClient()
+	if err != nil {
+		s.logger.Error("pull model failed", "error", err, "provider", upstreamProviderLabel)
+		http.Error(w, "upstream error", http.StatusBadGateway)
+		return
+	}
+
+	if err := client.PullModel(r.Context(), modelName); err != nil {
+		s.logger.Error("pull model failed", "model", modelName, "error", err, "provider", upstreamProviderLabel)
+		http.Error(w, "upstream error", http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]string{"model": modelName, "status": "pulled"}); err != nil {
+		s.logger.Error("encode pull response failed", "model", modelName, "error", err, "provider", upstreamProviderLabel)
 		http.Error(w, "upstream error", http.StatusBadGateway)
 	}
 }

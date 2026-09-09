@@ -46,16 +46,17 @@ services:
     restart: unless-stopped
 
     # Node exporter exposes host metrics to Prometheus. It runs in host network mode and mounts the root filesystem as read-only.
-  node-exporter:
-    image: quay.io/prometheus/node-exporter:latest
-    container_name: node_exporter
-    command:
-      - "--path.rootfs=/host"
-    network_mode: host
-    pid: host
-    restart: unless-stopped
-    volumes:
-      - "/:/host:ro,rslave"
+    # Currently fails to come up with a mount error
+  # node_exporter:
+  #   image: quay.io/prometheus/node-exporter:latest
+  #   container_name: node_exporter
+  #   command:
+  #     - "--path.rootfs=/host"
+  #   network_mode: host
+  #   pid: host
+  #   restart: unless-stopped
+  #   volumes:
+  #     - "/:/host:ro,rslave"
 
   prometheus:
     image: prom/prometheus:latest

@@ -43,12 +43,6 @@ install-hooks: ## Install git hooks (e.g., pre-push lint)
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)
 
-docker-build: ## Build Docker image
-	docker build -t $(DOCKER_IMAGE) .
-
-docker-run: ## Run Docker image (expects Ollama reachable from container)
-	docker run --rm -p 8000:8000 $(DOCKER_IMAGE)
-
 stack-up: ## Bring up Solas + Prometheus + Grafana stack (uses solas-stack/docker-compose.yml)
 	docker compose -f solas-stack/docker-compose.yml up -d --build
 

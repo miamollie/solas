@@ -38,6 +38,7 @@ func (s *Server) routes() http.Handler {
 		// Standard OpenAI-compatible endpoints for clients that expect them, proxying to Ollama.
 		r.Route("/v1", func(r chi.Router) {
 			r.Get("/models", s.handleModels)
+			r.Post("/models/pull", s.handlePullModel)
 			r.Post("/chat/completions", s.handleChat)
 		})
 	})

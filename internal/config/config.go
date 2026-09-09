@@ -10,7 +10,7 @@ import (
 
 const (
 	defaultListenAddress  = ":8000"
-	defaultOllamaBaseURL  = "http://127.0.0.1:11434"
+	defaultOllamaBaseURL  = "http://ollama:11434" // http://ollama:11434 in the container
 	defaultRequestTimeout = 60 * time.Second
 	defaultOllamaTimeout  = 60 * time.Second
 	defaultStartupTimeout = 10 * time.Second
@@ -95,5 +95,3 @@ func Validate(cfg Config) error {
 	}
 	return nil
 }
-
-// process profiling modes removed; running Ollama in-container only.
