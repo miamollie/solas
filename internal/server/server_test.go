@@ -20,10 +20,12 @@ import (
 )
 
 type fakeLLMClient struct {
-	err       error
-	modelsAny any
-	chatResp  model.Response
-	stream    []model.StreamChunk
+	err         error
+	modelsAny   any
+	chatResp    model.Response
+	stream      []model.StreamChunk
+	pulledModel *string
+	pullErr     error
 }
 
 func (f fakeLLMClient) Ready(_ context.Context) error {
@@ -38,6 +40,16 @@ func (f fakeLLMClient) GetModels(_ context.Context) (any, error) {
 		return ollama.OllamaTagsResponse{}, nil
 	}
 	return f.modelsAny, nil
+}
+
+func (f fakeLLMClient) PullModel(_ context.Context, modelName string) error {
+	if f.pulledModel != nil {
+		*f.pulledModel = modelName
+	}
+	if f.pullErr != nil {
+		return f.pullErr
+	}
+	return f.err
 }
 
 func (f fakeLLMClient) Chat(_ context.Context, reqBody model.Request) (model.Response, error) {
@@ -93,6 +105,26 @@ func (f fakeLLMClient) ParseStreamChunk(line []byte) (model.StreamChunk, error) 
 func newTestServer(client model.Client) *Server {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return New(logger, client, metrics.New())
+}
+
+func TestPullModelEndpoint(t *testing.T) {
+	pulled := ""
+	client := &fakeLLMClient{pulledModel: &pulled}
+	s := newTestServer(client)
+	req := httptest.NewRequest(http.MethodPost, "/v1/models/pull", strings.NewReader(`{"model":"qwen3:32b"}`))
+	rr := httptest.NewRecorder()
+
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if pulled != "qwen3:32b" {
+		t.Fatalf("expected pull for qwen3:32b, got %q", pulled)
+	}
+	if !strings.Contains(rr.Body.String(), "\"model\":\"qwen3:32b\"") {
+		t.Fatalf("expected payload to include the model name, got %s", rr.Body.String())
+	}
 }
 
 func TestHealthEndpoint(t *testing.T) {

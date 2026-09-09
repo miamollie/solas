@@ -45,6 +45,7 @@ func (c *OllamaClient) GetModels(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
@@ -55,6 +56,54 @@ func (c *OllamaClient) GetModels(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	return tags, nil
+}
+
+func (c *OllamaClient) PullModel(ctx context.Context, modelName string) error {
+	payload, err := json.Marshal(map[string]string{"model": modelName})
+	if err != nil {
+		return err
+	}
+
+	u := c.baseURL.JoinPath("/api/pull")
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("ollama returned status %d", resp.StatusCode)
+	}
+
+	decoder := json.NewDecoder(resp.Body)
+	for {
+		var event struct {
+			Status  string `json:"status"`
+			Error   string `json:"error"`
+			Model   string `json:"model"`
+			Digest  string `json:"digest"`
+			Total   int64  `json:"total"`
+			Done    int64  `json:"completed"`
+			Message string `json:"message"`
+		}
+		if err := decoder.Decode(&event); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		if event.Error != "" {
+			return fmt.Errorf("ollama pull failed: %s", event.Error)
+		}
+		if event.Status == "success" || event.Status == "completed" || event.Status == "already_exists" {
+			return nil
+		}
+	}
 }
 
 func (c *OllamaClient) Chat(ctx context.Context, req model.Request) (model.Response, error) {

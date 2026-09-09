@@ -6,12 +6,12 @@ services:
     image: solas:local
     ports:
       - "8000:8000"
+    depends_on:
+      ollama:
+        condition: service_started
     environment:
-      SOLAS_OLLAMA_BASE_URL: http://host.docker.internal:11434
-      SOLAS_PROCESS_PROFILE_MODE: device
-      # If ollama runs as a container on the same Docker network, use:
-      # SOLAS_PROCESS_PROFILE_MODE: container
-      # SOLAS_OLLAMA_CONTAINER_NAME: ollama
+      SOLAS_OLLAMA_BASE_URL: http://ollama:11434
+      SOLAS_OLLAMA_CONTAINER_NAME: ollama
     healthcheck:
       test:
         [
@@ -19,20 +19,54 @@ services:
           "/busybox",
           "sh",
           "-c",
-          "/busybox wget -qO- http://127.0.0.1:8000/health >/dev/null && /busybox wget -qO- http://127.0.0.1:8000/ready >/dev/null",
+          "/busybox wget -qO- http://127.0.0.1:8000/health >/dev/null || exit 1",
         ]
       interval: 10s
       timeout: 3s
       retries: 5
 
+  # Cadvisor is a container monitoring tool that exposes metrics about the host and running containers to Prometheus. It runs as a container and mounts the root filesystem, Docker socket, and other necessary directories as read-only.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/var/ollama
+    restart: unless-stopped
+
+    # Node exporter exposes host metrics to Prometheus. It runs in host network mode and mounts the root filesystem as read-only.
+    # Currently fails to come up with a mount error
+  # node_exporter:
+  #   image: quay.io/prometheus/node-exporter:latest
+  #   container_name: node_exporter
+  #   command:
+  #     - "--path.rootfs=/host"
+  #   network_mode: host
+  #   pid: host
+  #   restart: unless-stopped
+  #   volumes:
+  #     - "/:/host:ro,rslave"
+
   prometheus:
     image: prom/prometheus:latest
     depends_on:
-      - solas
+      solas:
+        condition: service_healthy
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.docker.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
 
   grafana:
@@ -55,7 +89,6 @@ services:
     ports:
       - "3000:8080"
     environment:
-      # use url within the docker network to speak directly to the container
       OPENAI_API_BASE_URL: http://solas:8000/v1
       OPENAI_API_KEY: solas
     volumes:
@@ -67,3 +100,4 @@ volumes:
   grafana-data:
   prometheus-data:
   open-webui-data:
+  ollama-data:

@@ -41,6 +41,7 @@ type StreamChunk struct {
 type Client interface {
 	Ready(ctx context.Context) error
 	GetModels(ctx context.Context) (any, error)
+	PullModel(ctx context.Context, modelName string) error
 	Chat(ctx context.Context, req Request) (Response, error)
 	StreamChat(ctx context.Context, req Request) (io.ReadCloser, error)
 	ParseStreamChunk(line []byte) (StreamChunk, error)
